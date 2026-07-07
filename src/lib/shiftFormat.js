@@ -57,3 +57,52 @@ export function isWithinNextSevenDays(startsAt) {
 
   return shiftKey >= todayKey && shiftKey < endKey
 }
+
+const dayLabelFormatter = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  day: 'numeric',
+  timeZone: userTimeZone,
+})
+
+export function formatDayLabel(date) {
+  return dayLabelFormatter.format(date)
+}
+
+export function getFourWeekRange() {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+
+  const end = new Date(start)
+  end.setDate(end.getDate() + 28)
+
+  return { start, end }
+}
+
+export function getFourWeekDays() {
+  const { start } = getFourWeekRange()
+  const days = []
+
+  for (let index = 0; index < 28; index += 1) {
+    const date = new Date(start)
+    date.setDate(start.getDate() + index)
+    days.push({
+      date,
+      key: formatLocalDateKey(date),
+      label: formatDayLabel(date),
+    })
+  }
+
+  return days
+}
+
+export function groupByDayKey(items, getStartsAt) {
+  const grouped = {}
+
+  for (const item of items) {
+    const key = formatLocalDateKey(new Date(getStartsAt(item)))
+    if (!grouped[key]) grouped[key] = []
+    grouped[key].push(item)
+  }
+
+  return grouped
+}

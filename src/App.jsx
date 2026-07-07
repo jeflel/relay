@@ -38,7 +38,7 @@ function App() {
     <div className="app-shell">
       <div className="app-content">
         {activeTab === 'home' && <Home user={session.user} />}
-        {activeTab === 'schedule' && <Schedule />}
+        {activeTab === 'schedule' && <Schedule user={session.user} />}
         {activeTab === 'more' && <More />}
       </div>
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />

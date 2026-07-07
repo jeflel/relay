@@ -339,3 +339,106 @@ body {
   color: #6b7280;
   font-size: 0.875rem;
 }
+
+.page.schedule {
+  padding-top: calc(2.75rem + env(safe-area-inset-top));
+  padding-bottom: calc(3rem + env(safe-area-inset-bottom));
+}
+
+.schedule-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  margin-bottom: 1.25rem;
+}
+
+.schedule-tabs button {
+  flex: 1;
+  padding: 0.75rem 0.5rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 0.875rem;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.schedule-tabs button.active {
+  color: #111;
+  font-weight: 600;
+  border-bottom-color: #111;
+}
+
+.schedule-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.schedule-day-row {
+  display: flex;
+  gap: 0.875rem;
+  align-items: flex-start;
+}
+
+.schedule-day-label {
+  flex-shrink: 0;
+  width: 3.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  padding-top: 0.125rem;
+}
+
+.schedule-day-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.schedule-day-off {
+  color: #9ca3af;
+  font-size: 0.875rem;
+  padding-top: 0.125rem;
+}
+
+.schedule-shift-card {
+  cursor: default;
+}
+
+.schedule-shift-card:active {
+  background: #fafafa;
+}
+
+.team-shift-card {
+  padding: 0.875rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #fafafa;
+}
+
+.team-shift-name {
+  font-weight: 600;
+  margin-bottom: 0.125rem;
+}
+
+.team-shift-credential {
+  color: #6b7280;
+  font-size: 0.875rem;
+  margin-bottom: 0.125rem;
+}
+
+.team-shift-unit {
+  font-size: 0.875rem;
+  margin-bottom: 0.125rem;
+}
+
+.team-shift-time {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
