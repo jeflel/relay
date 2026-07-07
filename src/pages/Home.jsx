@@ -83,18 +83,19 @@ export default function Home({ user }) {
   const todayLabel = formatShiftDate(today.toISOString())
   const todayShifts = shifts.filter((shift) => isSameLocalDay(new Date(shift.starts_at), today))
   const upcomingShifts = shifts.filter((shift) => isWithinNextSevenDays(shift.starts_at))
-  const displayName = fullName || user.email
 
   return (
     <main className="page home">
-      <h1>
-        {getGreeting()}
-        {displayName ? `, ${displayName}` : ''}
+      <h1 className={loading ? 'home-greeting home-greeting--loading' : 'home-greeting'}>
+        {!loading && (
+          <>
+            {getGreeting()}
+            {fullName ? `, ${fullName}` : ''}
+          </>
+        )}
       </h1>
 
       <p className="home-date">{todayLabel}</p>
-
-      {loading && <p className="page-status">Loading…</p>}
 
       {!loading && error && <p className="page-error">Could not load home data: {error}</p>}
 

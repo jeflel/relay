@@ -177,6 +177,24 @@ body {
   margin-bottom: 0.5rem;
 }
 
+.home-greeting--loading {
+  min-height: 2.25rem;
+  background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+  background-size: 200% 100%;
+  animation: home-greeting-shimmer 1.2s ease-in-out infinite;
+  border-radius: 0.25rem;
+}
+
+@keyframes home-greeting-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 .home-date {
   color: #4b5563;
   font-size: 0.9375rem;
