@@ -203,10 +203,19 @@ body {
 }
 
 .shift-card {
+  width: 100%;
   padding: 1rem;
   border: 1px solid #e5e7eb;
   border-radius: 0.5rem;
   background: #fafafa;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.shift-card:active {
+  background: #f3f4f6;
 }
 
 .shift-card-header {
@@ -250,6 +259,83 @@ body {
 }
 
 .shift-time {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
+
+.shift-detail {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #fff;
+  overflow-y: auto;
+}
+
+.shift-detail-page {
+  padding-top: calc(1.5rem + env(safe-area-inset-top));
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #2563eb;
+  cursor: pointer;
+}
+
+.shift-detail-header {
+  margin-bottom: 2rem;
+}
+
+.shift-detail-header .shift-date {
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.shift-detail-header .shift-time {
+  font-size: 0.9375rem;
+}
+
+.coworkers-section h2 {
+  font-size: 1.125rem;
+  margin-bottom: 1rem;
+}
+
+.coworker-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.coworker-card {
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #fafafa;
+}
+
+.coworker-name {
+  font-weight: 600;
+  margin-bottom: 0.125rem;
+}
+
+.coworker-credential {
+  color: #6b7280;
+  font-size: 0.875rem;
+  margin-bottom: 0.125rem;
+}
+
+.coworker-time {
   color: #6b7280;
   font-size: 0.875rem;
 }

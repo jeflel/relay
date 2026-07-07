@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import ShiftDetail from './ShiftDetail'
 import {
   formatShiftDate,
   formatShiftTimeRange,
@@ -20,6 +21,7 @@ export default function Home({ user }) {
   const [shifts, setShifts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [selectedShift, setSelectedShift] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -67,6 +69,16 @@ export default function Home({ user }) {
     }
   }, [user.id])
 
+  if (selectedShift) {
+    return (
+      <ShiftDetail
+        shift={selectedShift}
+        user={user}
+        onBack={() => setSelectedShift(null)}
+      />
+    )
+  }
+
   const today = new Date()
   const todayLabel = formatShiftDate(today.toISOString())
   const todayShifts = shifts.filter((shift) => isSameLocalDay(new Date(shift.starts_at), today))
@@ -103,18 +115,24 @@ export default function Home({ user }) {
                   const period = getShiftPeriod(shift.starts_at)
 
                   return (
-                  <li key={shift.id} className="shift-card">
-                    <div className="shift-card-header">
-                      <p className="shift-unit">{shift.unit}</p>
-                      <span className={`shift-period shift-period--${period.toLowerCase()}`}>
-                        {period}
-                      </span>
-                    </div>
-                    <p className="shift-date">{formatShiftDate(shift.starts_at)}</p>
-                    <p className="shift-time">
-                      {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
-                    </p>
-                  </li>
+                    <li key={shift.id}>
+                      <button
+                        type="button"
+                        className="shift-card"
+                        onClick={() => setSelectedShift(shift)}
+                      >
+                        <div className="shift-card-header">
+                          <p className="shift-unit">{shift.unit}</p>
+                          <span className={`shift-period shift-period--${period.toLowerCase()}`}>
+                            {period}
+                          </span>
+                        </div>
+                        <p className="shift-date">{formatShiftDate(shift.starts_at)}</p>
+                        <p className="shift-time">
+                          {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
+                        </p>
+                      </button>
+                    </li>
                   )
                 })}
               </ul>
