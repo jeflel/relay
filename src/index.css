@@ -1,0 +1,158 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root,
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+figure,
+blockquote {
+  margin: 0;
+}
+
+html,
+body,
+#root {
+  padding: 0;
+}
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  background: #fff;
+  color: #111;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+.page {
+  width: 100%;
+  max-width: 24rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem;
+}
+
+.page h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.auth-form label {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid #d1d5db;
+  border-radius: 0.5rem;
+  font: inherit;
+  background: #fff;
+}
+
+.auth-form input:focus {
+  outline: 2px solid #111;
+  outline-offset: 1px;
+  border-color: #111;
+}
+
+.auth-form button {
+  margin-top: 0.25rem;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: #111;
+  color: #fff;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.auth-form button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-error {
+  font-size: 0.875rem;
+  color: #b91c1c;
+}
+
+.auth-success {
+  font-size: 1rem;
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.schedule-email {
+  color: #4b5563;
+  margin-bottom: 1.5rem;
+}
+
+.schedule-status {
+  color: #6b7280;
+  font-size: 0.9375rem;
+}
+
+.schedule-error {
+  color: #b91c1c;
+  font-size: 0.875rem;
+}
+
+.shift-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.shift-card {
+  padding: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: #fafafa;
+}
+
+.shift-unit {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.shift-date {
+  color: #374151;
+  font-size: 0.9375rem;
+  margin-bottom: 0.125rem;
+}
+
+.shift-time {
+  color: #6b7280;
+  font-size: 0.875rem;
+}
