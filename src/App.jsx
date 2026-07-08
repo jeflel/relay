@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
+import { ensureDevSession, isLocalDev } from './lib/devAuth'
 import Auth from './components/Auth'
 import BottomNav from './components/BottomNav'
 import Home from './pages/Home'
@@ -13,14 +14,32 @@ function App() {
   const [activeTab, setActiveTab] = useState('home')
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+    let active = true
+
+    async function initAuth() {
+      if (isLocalDev) {
+        const devSession = await ensureDevSession()
+        if (!active) return
+
+        if (devSession) {
+          setSession(devSession)
+          fetchRole(devSession.user.id)
+          return
+        }
+      }
+
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      if (!active) return
+
       setSession(currentSession)
       if (currentSession) {
         fetchRole(currentSession.user.id)
       } else {
         setLoading(false)
       }
-    })
+    }
+
+    initAuth()
 
     const {
       data: { subscription },
@@ -31,7 +50,10 @@ function App() {
       }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   async function fetchRole(userId) {
@@ -49,7 +71,18 @@ function App() {
   }
 
   if (loading) return null
-  if (!session) return <Auth />
+  if (!session && !isLocalDev) return <Auth />
+  if (!session) {
+    return (
+      <main className="page auth">
+        <h1>Local dev sign-in</h1>
+        <p className="auth-error">
+          Add <code>VITE_DEV_EMAIL</code> and <code>VITE_DEV_PASSWORD</code> to your <code>.env</code>{' '}
+          file, then restart the dev server.
+        </p>
+      </main>
+    )
+  }
 
   return (
     <div className="app-shell">
