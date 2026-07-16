@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AlertTriangle, Pencil, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { ShiftPeriodPill, StatusPill } from '@/components/ui/pill'
 import { Button } from '@/components/ui/button'
@@ -6,6 +7,7 @@ import { cn } from '@/lib/utils'
 import {
   addLocalDays,
   diffInCalendarDays,
+  formatLocalDateKey,
   formatShiftDate,
   formatShiftTimeRange,
   getFourWeekDays,
@@ -502,6 +504,14 @@ function ManageTab() {
   const [recentLoading, setRecentLoading] = useState(true)
   const [recentError, setRecentError] = useState(null)
   const [showAllRecent, setShowAllRecent] = useState(false)
+  const [recentActionMessage, setRecentActionMessage] = useState(null)
+
+  const [openShiftAction, setOpenShiftAction] = useState(null)
+  const [editForm, setEditForm] = useState(null)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState(null)
+  const [deleteSaving, setDeleteSaving] = useState(false)
+  const [deleteError, setDeleteError] = useState(null)
 
   const [dupSourceDate, setDupSourceDate] = useState('')
   const [dupDestDate, setDupDestDate] = useState('')
@@ -576,6 +586,87 @@ function ManageTab() {
   useEffect(() => {
     fetchRecentShifts()
   }, [])
+
+  function handleCloseShiftAction() {
+    setOpenShiftAction(null)
+    setEditForm(null)
+    setEditError(null)
+    setDeleteError(null)
+  }
+
+  function handleOpenEdit(shift) {
+    setRecentActionMessage(null)
+    setEditError(null)
+    setEditForm({
+      nurse_id: shift.nurse_id ?? '',
+      unit: shift.unit,
+      date: formatLocalDateKey(new Date(shift.starts_at)),
+      shift_type: getShiftPeriod(shift.starts_at).toLowerCase(),
+    })
+    setOpenShiftAction({ type: 'edit', shiftId: shift.id })
+  }
+
+  function handleOpenDelete(shift) {
+    setRecentActionMessage(null)
+    setDeleteError(null)
+    setOpenShiftAction({ type: 'delete', shiftId: shift.id })
+  }
+
+  async function handleSaveEdit(shiftId) {
+    if (!editForm.nurse_id) {
+      setEditError('Please select a nurse.')
+      return
+    }
+    if (!editForm.date) {
+      setEditError('Please choose a date.')
+      return
+    }
+
+    setEditSaving(true)
+    setEditError(null)
+
+    const { starts_at, ends_at } = buildShiftTimes(editForm.date, editForm.shift_type)
+
+    const { error: updateError } = await supabase
+      .from('shifts')
+      .update({
+        nurse_id: editForm.nurse_id,
+        unit: editForm.unit,
+        starts_at,
+        ends_at,
+        status: 'scheduled',
+      })
+      .eq('id', shiftId)
+
+    setEditSaving(false)
+
+    if (updateError) {
+      setEditError(updateError.message)
+      return
+    }
+
+    handleCloseShiftAction()
+    setRecentActionMessage('Shift updated.')
+    fetchRecentShifts()
+  }
+
+  async function handleConfirmDelete(shiftId) {
+    setDeleteSaving(true)
+    setDeleteError(null)
+
+    const { error: deleteErr } = await supabase.from('shifts').delete().eq('id', shiftId)
+
+    setDeleteSaving(false)
+
+    if (deleteErr) {
+      setDeleteError(deleteErr.message)
+      return
+    }
+
+    handleCloseShiftAction()
+    setRecentActionMessage('Shift deleted.')
+    fetchRecentShifts()
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -864,6 +955,10 @@ function ManageTab() {
       <section>
         <h2 className="mb-4 text-sm font-semibold text-[#111111]">Recent shifts</h2>
 
+        {recentActionMessage && (
+          <p className="mb-3 text-sm text-[#16A34A]">{recentActionMessage}</p>
+        )}
+
         {recentLoading && <p className="text-sm text-[#6B7280]">Loading…</p>}
         {!recentLoading && recentError && (
           <p className="text-sm text-red-700">Could not load recent shifts: {recentError}</p>
@@ -889,7 +984,143 @@ function ManageTab() {
                           <p className="mt-0.5 truncate text-xs text-[#9CA3AF]">{shift.unit}</p>
                         </div>
                       }
+                      trailing={
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(shift)}
+                            aria-label="Edit shift"
+                            className="p-1 text-[#6B7280]"
+                          >
+                            <Pencil size={15} strokeWidth={2} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDelete(shift)}
+                            aria-label="Delete shift"
+                            className="p-1 text-[#EF4444]"
+                          >
+                            <Trash2 size={15} strokeWidth={2} />
+                          </button>
+                        </div>
+                      }
                     />
+
+                    {openShiftAction?.type === 'edit' &&
+                      openShiftAction.shiftId === shift.id &&
+                      editForm && (
+                        <div className="mt-2 flex flex-col gap-4 rounded-xl bg-white p-4 shadow-sm">
+                          <div className="flex flex-col gap-1.5">
+                            <label className={labelClassName}>Nurse</label>
+                            <select
+                              value={editForm.nurse_id}
+                              onChange={(e) =>
+                                setEditForm({ ...editForm, nurse_id: e.target.value })
+                              }
+                              className={inputClassName}
+                            >
+                              <option value="">Select a nurse</option>
+                              {nurses.map((n) => (
+                                <option key={n.id} value={n.id}>
+                                  {n.full_name} {n.credential ? `(${n.credential})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="flex flex-col gap-1.5">
+                            <label className={labelClassName}>Unit</label>
+                            <select
+                              value={editForm.unit}
+                              onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
+                              className={inputClassName}
+                            >
+                              <option value="Unit 1">Unit 1</option>
+                              <option value="Unit 2">Unit 2</option>
+                            </select>
+                          </div>
+
+                          <div className="flex flex-col gap-1.5">
+                            <label className={labelClassName}>Date</label>
+                            <input
+                              type="date"
+                              value={editForm.date}
+                              onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                              className={inputClassName}
+                            />
+                          </div>
+
+                          <div className="flex flex-col gap-1.5">
+                            <label className={labelClassName}>Shift</label>
+                            <select
+                              value={editForm.shift_type}
+                              onChange={(e) =>
+                                setEditForm({ ...editForm, shift_type: e.target.value })
+                              }
+                              className={inputClassName}
+                            >
+                              <option value="day">Day (7am – 7pm)</option>
+                              <option value="evening">Evening (3pm – 11pm)</option>
+                              <option value="night">Night (11pm – 7am)</option>
+                            </select>
+                          </div>
+
+                          {editError && <p className="text-sm text-red-700">{editError}</p>}
+
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEdit(shift.id)}
+                              disabled={editSaving}
+                              className="rounded-full bg-[#111111] px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                            >
+                              {editSaving ? 'Saving…' : 'Save'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleCloseShiftAction}
+                              disabled={editSaving}
+                              className="rounded-full border border-[#E8E6E3] px-4 py-2 text-sm font-medium text-[#111111] disabled:opacity-60"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                    {openShiftAction?.type === 'delete' && openShiftAction.shiftId === shift.id && (
+                      <div className="mt-2 flex flex-col gap-3 rounded-xl bg-white p-4 shadow-sm">
+                        <p className="text-sm font-medium text-[#111111]">Delete this shift?</p>
+
+                        {shift.status === 'pending' && (
+                          <div className="flex items-start gap-1.5 text-sm text-[#D97706]">
+                            <AlertTriangle size={15} strokeWidth={2} className="mt-0.5 shrink-0" />
+                            <p>This shift has a pending claim. Deleting it will remove the claim.</p>
+                          </div>
+                        )}
+
+                        {deleteError && <p className="text-sm text-red-700">{deleteError}</p>}
+
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmDelete(shift.id)}
+                            disabled={deleteSaving}
+                            className="rounded-full bg-red-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                          >
+                            {deleteSaving ? 'Deleting…' : 'Delete'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCloseShiftAction}
+                            disabled={deleteSaving}
+                            className="rounded-full border border-[#E8E6E3] px-4 py-2 text-sm font-medium text-[#111111] disabled:opacity-60"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
