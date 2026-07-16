@@ -42,8 +42,8 @@ function MyShiftsTab({ user }) {
 
       const { data, error: fetchError } = await supabase
         .from('shifts')
-        .select('id, unit, starts_at, ends_at')
-        .eq('nurse_id', user.id)
+        .select('id, unit, starts_at, ends_at, status')
+        .or(`nurse_id.eq.${user.id},claimed_by.eq.${user.id}`)
         .gte('starts_at', start.toISOString())
         .lt('starts_at', end.toISOString())
         .order('starts_at', { ascending: true })
@@ -94,6 +94,11 @@ function MyShiftsTab({ user }) {
                       <p className="shift-time">
                         {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
                       </p>
+                      <span
+                        className={`status-pill status-pill--${getStatusModifier(shift.status)}`}
+                      >
+                        {shift.status === 'pending' ? 'Pending approval' : getStatusLabel(shift.status)}
+                      </span>
                     </div>
                   )
                 })
@@ -103,6 +108,137 @@ function MyShiftsTab({ user }) {
         )
       })}
     </ul>
+  )
+}
+
+function OpenShiftsTab({ user }) {
+  const [shifts, setShifts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [claimingId, setClaimingId] = useState(null)
+  const [takenId, setTakenId] = useState(null)
+  const [successMessage, setSuccessMessage] = useState(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchOpenShifts() {
+      setLoading(true)
+      setError(null)
+
+      const { data, error: fetchError } = await supabase
+        .from('shifts')
+        .select('id, unit, starts_at, ends_at, status')
+        .eq('status', 'open')
+        .order('starts_at', { ascending: true })
+
+      if (cancelled) return
+
+      if (fetchError) {
+        setError(fetchError.message)
+        setShifts([])
+      } else {
+        setShifts(data ?? [])
+      }
+
+      setLoading(false)
+    }
+
+    fetchOpenShifts()
+    return () => { cancelled = true }
+  }, [])
+
+  async function handleClaim(shift) {
+    setTakenId(null)
+    setSuccessMessage(null)
+    setClaimingId(shift.id)
+
+    // Optimistic UI: show this shift as pending immediately
+    setShifts((current) =>
+      current.map((s) => (s.id === shift.id ? { ...s, status: 'pending' } : s)),
+    )
+
+    const { data, error: claimError } = await supabase
+      .from('shifts')
+      .update({ status: 'pending', claimed_by: user.id, claimed_at: new Date().toISOString() })
+      .eq('id', shift.id)
+      .eq('status', 'open')
+      .select()
+
+    setClaimingId(null)
+
+    if (claimError || !data || data.length === 0) {
+      // Race lost (someone else claimed it first) - roll back and tell the nurse
+      setShifts((current) =>
+        current.map((s) => (s.id === shift.id ? { ...s, status: 'open' } : s)),
+      )
+      setTakenId(shift.id)
+      return
+    }
+
+    // Claim succeeded - it's no longer open, so drop it from this list.
+    // It now shows up as Pending in My Shifts.
+    setShifts((current) => current.filter((s) => s.id !== shift.id))
+    setSuccessMessage(`Requested ${shift.unit} shift - check My Shifts for status.`)
+  }
+
+  if (loading) return <p className="page-status">Loading open shifts…</p>
+  if (error) return <p className="page-error">Could not load open shifts: {error}</p>
+
+  return (
+    <>
+      {successMessage && <p className="page-success">{successMessage}</p>}
+
+      {shifts.length === 0 ? (
+        <p className="page-status">No open shifts right now</p>
+      ) : (
+        <ul className="shift-list">
+          {shifts.map((shift) => {
+            const period = getShiftPeriod(shift.starts_at)
+            const isPending = shift.status === 'pending'
+            const isClaiming = claimingId === shift.id
+
+            return (
+              <li key={shift.id}>
+                <div className="shift-card open-shift-card">
+                  <div className="shift-card-header">
+                    <p className="shift-unit">{shift.unit}</p>
+                    <span className={`shift-period shift-period--${period.toLowerCase()}`}>
+                      {period}
+                    </span>
+                  </div>
+                  <p className="shift-date">{formatShiftDate(shift.starts_at)}</p>
+                  <p className="shift-time">
+                    {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
+                  </p>
+
+                  <div className="open-shift-footer">
+                    <span
+                      className={`status-pill status-pill--${getStatusModifier(shift.status)}`}
+                    >
+                      {isPending ? 'Pending approval' : getStatusLabel(shift.status)}
+                    </span>
+
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={() => handleClaim(shift)}
+                      disabled={isPending || isClaiming}
+                    >
+                      {isPending ? 'Requested' : isClaiming ? 'Requesting…' : 'Claim'}
+                    </button>
+                  </div>
+
+                  {takenId === shift.id && (
+                    <p className="page-error">This shift was just taken.</p>
+                  )}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </>
   )
 }
 
@@ -122,8 +258,9 @@ function TeamScheduleTab() {
       const { data, error: fetchError } = await supabase
         .from('shifts')
         .select(`
-          id, unit, starts_at, ends_at, nurse_id,
-          profiles!nurse_id ( full_name, credential )
+          id, unit, starts_at, ends_at, status, nurse_id,
+          profiles!nurse_id ( full_name, credential ),
+          claimant:profiles!claimed_by ( full_name, credential )
         `)
         .gte('starts_at', start.toISOString())
         .lt('starts_at', end.toISOString())
@@ -162,18 +299,36 @@ function TeamScheduleTab() {
               {dayShifts.length === 0 ? (
                 <p className="schedule-day-off">No shifts</p>
               ) : (
-                dayShifts.map((shift) => (
-                  <div key={shift.id} className="team-shift-card">
-                    <p className="team-shift-name">{shift.profiles?.full_name}</p>
-                    {shift.profiles?.credential && (
-                      <p className="team-shift-credential">{shift.profiles.credential}</p>
-                    )}
-                    <p className="team-shift-unit">{shift.unit}</p>
-                    <p className="team-shift-time">
-                      {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
-                    </p>
-                  </div>
-                ))
+                dayShifts.map((shift) => {
+                  const displayName =
+                    shift.status === 'open'
+                      ? 'Open shift'
+                      : shift.status === 'pending'
+                        ? shift.claimant?.full_name ?? 'Pending claim'
+                        : shift.profiles?.full_name
+                  const displayCredential =
+                    shift.status === 'pending' ? shift.claimant?.credential : shift.profiles?.credential
+
+                  return (
+                    <div key={shift.id} className="team-shift-card">
+                      <div className="shift-card-header">
+                        <p className="team-shift-name">{displayName}</p>
+                        <span
+                          className={`status-pill status-pill--${getStatusModifier(shift.status)}`}
+                        >
+                          {getStatusLabel(shift.status)}
+                        </span>
+                      </div>
+                      {displayCredential && (
+                        <p className="team-shift-credential">{displayCredential}</p>
+                      )}
+                      <p className="team-shift-unit">{shift.unit}</p>
+                      <p className="team-shift-time">
+                        {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
+                      </p>
+                    </div>
+                  )
+                })
               )}
             </div>
           </li>
@@ -714,6 +869,17 @@ export default function Schedule({ user, role }) {
         >
           My Shifts
         </button>
+        {!isCoordinator && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'open'}
+            className={activeTab === 'open' ? 'active' : undefined}
+            onClick={() => setActiveTab('open')}
+          >
+            Open Shifts
+          </button>
+        )}
         <button
           type="button"
           role="tab"
@@ -738,6 +904,7 @@ export default function Schedule({ user, role }) {
 
       <div className="schedule-panel" role="tabpanel">
         {activeTab === 'my' && <MyShiftsTab user={user} />}
+        {activeTab === 'open' && !isCoordinator && <OpenShiftsTab user={user} />}
         {activeTab === 'team' && <TeamScheduleTab />}
         {activeTab === 'manage' && isCoordinator && <ManageTab />}
       </div>
