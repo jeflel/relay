@@ -26,7 +26,7 @@ function getSummaryRange() {
   return { start, end }
 }
 
-export default function Home({ user, role, onTabChange }) {
+export default function Home({ user, role, onGoToManage }) {
   const [fullName, setFullName] = useState(null)
   const [shifts, setShifts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -123,7 +123,7 @@ export default function Home({ user, role, onTabChange }) {
 
       {!loading && !error && (
         isCoordinator ? (
-          <CoordinatorSummary shifts={shifts} today={today} onTabChange={onTabChange} />
+          <CoordinatorSummary shifts={shifts} today={today} onGoToManage={onGoToManage} />
         ) : (
           <NurseSummary shifts={shifts} today={today} onSelectShift={setSelectedShift} />
         )
@@ -180,7 +180,7 @@ function NurseSummary({ shifts, today, onSelectShift }) {
   )
 }
 
-function CoordinatorSummary({ shifts, today, onTabChange }) {
+function CoordinatorSummary({ shifts, today, onGoToManage }) {
   const todayShifts = shifts.filter((shift) => isSameLocalDay(new Date(shift.starts_at), today))
   const uniqueNursesToday = new Set(todayShifts.map((shift) => shift.nurse_id)).size
 
@@ -224,7 +224,7 @@ function CoordinatorSummary({ shifts, today, onTabChange }) {
         )}
       </div>
 
-      <button type="button" className="btn-primary" onClick={() => onTabChange('schedule')}>
+      <button type="button" className="btn-primary" onClick={onGoToManage}>
         Go to Manage
       </button>
     </section>

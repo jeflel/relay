@@ -11,6 +11,7 @@ function App() {
   const [role, setRole] = useState(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('home')
+  const [scheduleInitialTab, setScheduleInitialTab] = useState('my')
 
   useEffect(() => {
     let active = true
@@ -58,17 +59,31 @@ function App() {
     setLoading(false)
   }
 
+  function handleBottomNavChange(tab) {
+    setScheduleInitialTab('my')
+    setActiveTab(tab)
+  }
+
+  function handleGoToManage() {
+    setScheduleInitialTab('manage')
+    setActiveTab('schedule')
+  }
+
   if (loading) return null
   if (!session) return <Auth />
 
   return (
     <div className="app-shell">
       <div className="app-content">
-        {activeTab === 'home' && <Home user={session.user} role={role} onTabChange={setActiveTab} />}
-        {activeTab === 'schedule' && <Schedule user={session.user} role={role} />}
+        {activeTab === 'home' && (
+          <Home user={session.user} role={role} onGoToManage={handleGoToManage} />
+        )}
+        {activeTab === 'schedule' && (
+          <Schedule user={session.user} role={role} initialTab={scheduleInitialTab} />
+        )}
         {activeTab === 'more' && <More />}
       </div>
-      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+      <BottomNav activeTab={activeTab} onTabChange={handleBottomNavChange} />
     </div>
   )
 }

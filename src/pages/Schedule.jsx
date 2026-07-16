@@ -851,8 +851,8 @@ function ManageTab() {
   )
 }
 
-export default function Schedule({ user, role }) {
-  const [activeTab, setActiveTab] = useState('my')
+export default function Schedule({ user, role, initialTab = 'my' }) {
+  const [activeTab, setActiveTab] = useState(initialTab)
   const isCoordinator = role === 'coordinator'
 
   return (
