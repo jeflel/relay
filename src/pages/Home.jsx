@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
+import { Calendar, Users, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import ShiftDetail from './ShiftDetail'
 import { ShiftPeriodPill } from '@/components/ui/pill'
+import { Card } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
   formatDayLabel,
   formatLocalDateKey,
@@ -11,6 +15,9 @@ import {
   isSameLocalDay,
   isWithinNextSevenDays,
 } from '../lib/shiftFormat'
+
+const weekdayFormatter = new Intl.DateTimeFormat(undefined, { weekday: 'short' })
+const monthFormatter = new Intl.DateTimeFormat(undefined, { month: 'short' })
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -29,6 +36,7 @@ function getSummaryRange() {
 
 export default function Home({ user, role, onGoToManage }) {
   const [fullName, setFullName] = useState(null)
+  const [credential, setCredential] = useState(null)
   const [shifts, setShifts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -60,7 +68,7 @@ export default function Home({ user, role, onGoToManage }) {
             .order('starts_at', { ascending: true })
 
       const [profileResult, shiftsResult] = await Promise.all([
-        supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle(),
+        supabase.from('profiles').select('full_name, credential').eq('id', user.id).maybeSingle(),
         shiftsQuery,
       ])
 
@@ -69,6 +77,7 @@ export default function Home({ user, role, onGoToManage }) {
       if (profileResult.error) {
         setError(profileResult.error.message)
         setFullName(null)
+        setCredential(null)
         setShifts([])
         setLoading(false)
         return
@@ -77,12 +86,14 @@ export default function Home({ user, role, onGoToManage }) {
       if (shiftsResult.error) {
         setError(shiftsResult.error.message)
         setFullName(profileResult.data?.full_name ?? null)
+        setCredential(profileResult.data?.credential ?? null)
         setShifts([])
         setLoading(false)
         return
       }
 
       setFullName(profileResult.data?.full_name ?? null)
+      setCredential(profileResult.data?.credential ?? null)
       setShifts(shiftsResult.data ?? [])
       setLoading(false)
     }
@@ -108,66 +119,120 @@ export default function Home({ user, role, onGoToManage }) {
   const todayLabel = formatShiftDate(today.toISOString())
 
   return (
-    <main className="page home">
-      <h1 className={loading ? 'home-greeting home-greeting--loading' : 'home-greeting'}>
-        {!loading && (
-          <>
-            {getGreeting()}
-            {fullName ? `, ${fullName}` : ''}
-          </>
-        )}
-      </h1>
+    <main className="mx-auto w-full max-w-md px-5 pt-12 pb-12">
+      {loading ? (
+        <div className="h-9 w-48 animate-pulse rounded-md bg-line/60" />
+      ) : (
+        <h1 className="text-3xl tracking-tight">
+          <span className="font-medium text-[#6B7280]">{getGreeting()}</span>
+          {fullName && <span className="font-bold text-ink">, {fullName}</span>}
+        </h1>
+      )}
 
-      <p className="home-date">{todayLabel}</p>
+      <p className="mt-2 text-base font-normal text-[#9CA3AF]">{todayLabel}</p>
 
-      {!loading && error && <p className="page-error">Could not load home data: {error}</p>}
+      {!loading && error && (
+        <p className="mt-6 text-sm text-red-700">Could not load home data: {error}</p>
+      )}
 
       {!loading && !error && (
-        isCoordinator ? (
-          <CoordinatorSummary shifts={shifts} today={today} onGoToManage={onGoToManage} />
-        ) : (
-          <NurseSummary shifts={shifts} today={today} onSelectShift={setSelectedShift} />
-        )
+        <div className="mt-8">
+          {isCoordinator ? (
+            <CoordinatorSummary shifts={shifts} today={today} onGoToManage={onGoToManage} />
+          ) : (
+            <NurseSummary
+              shifts={shifts}
+              today={today}
+              credential={credential}
+              onSelectShift={setSelectedShift}
+            />
+          )}
+        </div>
       )}
     </main>
   )
 }
 
-function NurseSummary({ shifts, today, onSelectShift }) {
+function NurseSummary({ shifts, today, credential, onSelectShift }) {
   const todayShifts = shifts.filter((shift) => isSameLocalDay(new Date(shift.starts_at), today))
   const upcomingShifts = shifts.filter((shift) => isWithinNextSevenDays(shift.starts_at))
+  const isWorkingToday = todayShifts.length > 0
 
   return (
     <>
-      <p className="home-today-status">
-        {todayShifts.length > 0 ? "You're working today" : 'You have the day off'}
-      </p>
+      <div className="mb-9">
+        <div className="flex items-center gap-2">
+          {isWorkingToday && (
+            <CheckCircle2 className="shrink-0 text-[#16A34A]" size={18} strokeWidth={2.5} />
+          )}
+          <p
+            className={cn(
+              'text-[17px]',
+              isWorkingToday ? 'font-medium text-ink' : 'text-[#6B7280]',
+            )}
+          >
+            {isWorkingToday ? "You're working today" : 'You have the day off'}
+          </p>
+        </div>
 
-      <section className="home-upcoming">
-        <h2>Upcoming shifts</h2>
+        {isWorkingToday && (
+          <div className="mt-1.5 flex flex-col gap-0.5 pl-[26px]">
+            {todayShifts.map((shift) => (
+              <p key={shift.id} className="text-sm text-[#6B7280]">
+                {shift.unit} · {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <section>
+        <h2 className="mb-4 text-lg font-semibold text-ink">Upcoming shifts</h2>
 
         {upcomingShifts.length === 0 ? (
-          <p className="page-status">No upcoming shifts</p>
+          <p className="text-[15px] text-[#6B7280]">No upcoming shifts</p>
         ) : (
-          <ul className="shift-list">
+          <ul className="flex flex-col gap-3">
             {upcomingShifts.map((shift) => {
               const period = getShiftPeriod(shift.starts_at)
+              const shiftDate = new Date(shift.starts_at)
 
               return (
                 <li key={shift.id}>
                   <button
                     type="button"
-                    className="shift-card"
                     onClick={() => onSelectShift(shift)}
+                    className="flex w-full items-center gap-4 rounded-card bg-white p-4 text-left shadow-sm transition-shadow active:shadow-none"
                   >
-                    <div className="shift-card-header">
-                      <p className="shift-unit">{shift.unit}</p>
-                      <ShiftPeriodPill period={period} />
+                    <div className="flex w-12 shrink-0 flex-col items-center justify-center gap-0.5 text-center">
+                      <span className="text-xs font-medium tracking-wide text-[#9CA3AF] uppercase">
+                        {weekdayFormatter.format(shiftDate)}
+                      </span>
+                      <span className="text-2xl font-bold text-ink">{shiftDate.getDate()}</span>
+                      <span className="text-xs font-medium tracking-wide text-[#9CA3AF] uppercase">
+                        {monthFormatter.format(shiftDate)}
+                      </span>
                     </div>
-                    <p className="shift-date">{formatShiftDate(shift.starts_at)}</p>
-                    <p className="shift-time">
-                      {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
-                    </p>
+
+                    <div className="h-12 w-px shrink-0 bg-line" />
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="truncate text-sm font-semibold text-ink">
+                          {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
+                        </p>
+                        <ShiftPeriodPill period={period} />
+                      </div>
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <p className="truncate text-xs text-[#9CA3AF]">{shift.unit}</p>
+                        {credential && (
+                          <>
+                            <span className="h-3 border-l border-line" />
+                            <p className="text-xs font-medium text-[#6B7280]">{credential}</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </button>
                 </li>
               )
@@ -196,36 +261,68 @@ function CoordinatorSummary({ shifts, today, onGoToManage }) {
     }
   }
 
+  const hasUnstaffed = unstaffedDates.length > 0
+
   return (
-    <section className="coordinator-summary">
-      <div className="summary-stats">
-        <div className="summary-stat">
-          <p className="summary-stat-value">{todayShifts.length}</p>
-          <p className="summary-stat-label">Shifts today</p>
-        </div>
-        <div className="summary-stat">
-          <p className="summary-stat-value">{uniqueNursesToday}</p>
-          <p className="summary-stat-label">Nurses scheduled today</p>
-        </div>
+    <section>
+      <div className="grid grid-cols-3 gap-3">
+        <Card className="gap-2 rounded-card border-none bg-surface px-2 py-5 text-center shadow-none">
+          <Calendar className="mx-auto text-[#6B7280]" size={18} strokeWidth={2} />
+          <p className="text-2xl font-bold text-ink">{todayShifts.length}</p>
+          <p className="text-xs text-[#6B7280]">Shifts today</p>
+        </Card>
+
+        <Card className="gap-2 rounded-card border-none bg-surface px-2 py-5 text-center shadow-none">
+          <Users className="mx-auto text-[#6B7280]" size={18} strokeWidth={2} />
+          <p className="text-2xl font-bold text-ink">{uniqueNursesToday}</p>
+          <p className="text-xs text-[#6B7280]">Nurses scheduled</p>
+        </Card>
+
+        <Card
+          className={cn(
+            'gap-2 rounded-card border-none px-2 py-5 text-center shadow-none',
+            hasUnstaffed ? 'bg-[#FEF9C3]' : 'bg-surface',
+          )}
+        >
+          <AlertTriangle
+            className={cn('mx-auto', hasUnstaffed ? 'text-[#CA8A04]' : 'text-[#6B7280]')}
+            size={18}
+            strokeWidth={2}
+          />
+          <p className={cn('text-2xl font-bold', hasUnstaffed ? 'text-[#92400E]' : 'text-ink')}>
+            {unstaffedDates.length}
+          </p>
+          <p className={cn('text-xs', hasUnstaffed ? 'text-[#A16207]' : 'text-[#6B7280]')}>
+            Unstaffed days
+          </p>
+        </Card>
       </div>
 
-      <div className="summary-gaps">
-        <h2>Unstaffed days (next 7 days)</h2>
-
-        {unstaffedDates.length === 0 ? (
-          <p className="page-status">Every day this week has coverage</p>
-        ) : (
-          <ul className="summary-gap-list">
+      {hasUnstaffed && (
+        <div className="mt-7">
+          <h2 className="mb-3 text-xs font-semibold tracking-wide text-[#9CA3AF] uppercase">
+            Unstaffed days (next 7 days)
+          </h2>
+          <ul className="flex flex-col gap-2">
             {unstaffedDates.map((date) => (
-              <li key={formatLocalDateKey(date)}>{formatDayLabel(date)}</li>
+              <li
+                key={formatLocalDateKey(date)}
+                className="rounded-card border border-line bg-surface px-4 py-3 text-[15px] text-ink"
+              >
+                {formatDayLabel(date)}
+              </li>
             ))}
           </ul>
-        )}
-      </div>
+        </div>
+      )}
 
-      <button type="button" className="btn-primary" onClick={onGoToManage}>
+      <Button
+        type="button"
+        onClick={onGoToManage}
+        className="mt-9 h-auto w-full rounded-full bg-ink py-4 text-base font-semibold text-white hover:bg-ink/90"
+      >
         Go to Manage
-      </button>
+      </Button>
     </section>
   )
 }
