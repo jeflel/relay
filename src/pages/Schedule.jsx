@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { ShiftPeriodPill, StatusPill } from '@/components/ui/pill'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
   addLocalDays,
   diffInCalendarDays,
@@ -14,6 +16,9 @@ import {
   groupByDayKey,
 } from '../lib/shiftFormat'
 
+const weekdayFormatter = new Intl.DateTimeFormat(undefined, { weekday: 'short' })
+const monthFormatter = new Intl.DateTimeFormat(undefined, { month: 'short' })
+
 function formatWeekRangeLabel(weekStart) {
   const weekEnd = new Date(weekStart)
   weekEnd.setDate(weekEnd.getDate() + 6)
@@ -26,8 +31,59 @@ function formatWeekRangeLabel(weekStart) {
   return `${startLabel} – ${endLabel}`
 }
 
+function ShiftCard({ date, title, subtitle, pill, belowPill, trailing, onClick }) {
+  const isInteractive = typeof onClick === 'function'
+  const Comp = isInteractive ? 'button' : 'div'
+
+  return (
+    <Comp
+      type={isInteractive ? 'button' : undefined}
+      onClick={onClick}
+      className={cn(
+        'flex w-full items-center rounded-xl bg-white p-4 shadow-sm',
+        isInteractive && 'text-left transition-shadow active:shadow-none',
+      )}
+    >
+      <div className="flex w-12 shrink-0 flex-col items-center justify-center gap-0.5 text-center">
+        <span className="text-xs font-medium tracking-wide text-[#9CA3AF] uppercase">
+          {weekdayFormatter.format(date)}
+        </span>
+        <span className="text-2xl font-bold text-[#111111]">{date.getDate()}</span>
+        <span className="text-xs font-medium tracking-wide text-[#9CA3AF] uppercase">
+          {monthFormatter.format(date)}
+        </span>
+      </div>
+
+      <div className="mx-3 h-8 self-center border-l border-[#E8E6E3]" />
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-3">
+          <p className="truncate text-sm font-semibold text-[#111111]">{title}</p>
+          {pill}
+        </div>
+        {subtitle}
+        {belowPill && <div className="mt-2">{belowPill}</div>}
+      </div>
+
+      {trailing && <div className="ml-3 shrink-0">{trailing}</div>}
+    </Comp>
+  )
+}
+
+function DayOffRow({ label, text }) {
+  return (
+    <li className="flex items-center gap-3 py-1 pl-1 text-sm text-[#9CA3AF]">
+      <span className="w-12 shrink-0 text-center text-xs font-medium tracking-wide uppercase">
+        {label}
+      </span>
+      <span>{text}</span>
+    </li>
+  )
+}
+
 function MyShiftsTab({ user }) {
   const [shifts, setShifts] = useState([])
+  const [credential, setCredential] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -63,45 +119,64 @@ function MyShiftsTab({ user }) {
     return () => { cancelled = true }
   }, [user.id])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchCredential() {
+      const { data } = await supabase
+        .from('profiles')
+        .select('credential')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (!cancelled) setCredential(data?.credential ?? null)
+    }
+
+    fetchCredential()
+    return () => { cancelled = true }
+  }, [user.id])
+
   const shiftsByDay = groupByDayKey(shifts, (shift) => shift.starts_at)
   const days = getFourWeekDays()
 
-  if (loading) return <p className="page-status">Loading shifts…</p>
-  if (error) return <p className="page-error">Could not load shifts: {error}</p>
+  if (loading) return <p className="text-sm text-[#6B7280]">Loading shifts…</p>
+  if (error) return <p className="text-sm text-red-700">Could not load shifts: {error}</p>
 
   return (
-    <ul className="schedule-list">
+    <ul className="flex flex-col gap-3">
       {days.map((day) => {
         const dayShifts = shiftsByDay[day.key] ?? []
-        return (
-          <li key={day.key} className="schedule-day-row">
-            <div className="schedule-day-label">{day.label}</div>
-            <div className="schedule-day-content">
-              {dayShifts.length === 0 ? (
-                <p className="schedule-day-off">Day off</p>
-              ) : (
-                dayShifts.map((shift) => {
-                  const period = getShiftPeriod(shift.starts_at)
-                  return (
-                    <div key={shift.id} className="shift-card schedule-shift-card">
-                      <div className="shift-card-header">
-                        <p className="shift-unit">{shift.unit}</p>
-                        <ShiftPeriodPill period={period} />
-                      </div>
-                      <p className="shift-time">
-                        {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
-                      </p>
-                      <StatusPill
-                        status={shift.status}
-                        label={shift.status === 'pending' ? 'Pending approval' : undefined}
-                      />
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </li>
-        )
+
+        if (dayShifts.length === 0) {
+          return <DayOffRow key={day.key} label={day.label} text="Day off" />
+        }
+
+        return dayShifts.map((shift) => {
+          const period = getShiftPeriod(shift.starts_at)
+          const isPending = shift.status === 'pending'
+
+          return (
+            <li key={shift.id}>
+              <ShiftCard
+                date={new Date(shift.starts_at)}
+                title={formatShiftTimeRange(shift.starts_at, shift.ends_at)}
+                pill={<ShiftPeriodPill period={period} />}
+                belowPill={isPending ? <StatusPill status="pending" label="Pending" /> : null}
+                subtitle={
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <p className="truncate text-xs text-[#9CA3AF]">{shift.unit}</p>
+                    {credential && (
+                      <>
+                        <span className="h-3 border-l border-[#E8E6E3]" />
+                        <p className="text-xs text-[#9CA3AF]">{credential}</p>
+                      </>
+                    )}
+                  </div>
+                }
+              />
+            </li>
+          )
+        })
       })}
     </ul>
   )
@@ -178,54 +253,51 @@ function OpenShiftsTab({ user }) {
     setSuccessMessage(`Requested ${shift.unit} shift - check My Shifts for status.`)
   }
 
-  if (loading) return <p className="page-status">Loading open shifts…</p>
-  if (error) return <p className="page-error">Could not load open shifts: {error}</p>
+  if (loading) return <p className="text-sm text-[#6B7280]">Loading open shifts…</p>
+  if (error) return <p className="text-sm text-red-700">Could not load open shifts: {error}</p>
 
   return (
     <>
-      {successMessage && <p className="page-success">{successMessage}</p>}
+      {successMessage && <p className="mb-4 text-sm text-[#16A34A]">{successMessage}</p>}
 
       {shifts.length === 0 ? (
-        <p className="page-status">No open shifts right now</p>
+        <p className="text-sm text-[#6B7280]">No open shifts right now</p>
       ) : (
-        <ul className="shift-list">
+        <ul className="flex flex-col gap-3">
           {shifts.map((shift) => {
-            const period = getShiftPeriod(shift.starts_at)
             const isPending = shift.status === 'pending'
             const isClaiming = claimingId === shift.id
 
             return (
               <li key={shift.id}>
-                <div className="shift-card open-shift-card">
-                  <div className="shift-card-header">
-                    <p className="shift-unit">{shift.unit}</p>
-                    <ShiftPeriodPill period={period} />
-                  </div>
-                  <p className="shift-date">{formatShiftDate(shift.starts_at)}</p>
-                  <p className="shift-time">
-                    {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
-                  </p>
+                <ShiftCard
+                  date={new Date(shift.starts_at)}
+                  title={formatShiftTimeRange(shift.starts_at, shift.ends_at)}
+                  pill={<StatusPill status={shift.status} label={isPending ? 'Pending approval' : undefined} />}
+                  subtitle={
+                    <div className="mt-1">
+                      <p className="truncate text-xs text-[#9CA3AF]">{shift.unit}</p>
+                    </div>
+                  }
+                  trailing={
+                    isPending ? (
+                      <span className="text-xs font-medium text-[#9CA3AF]">Requested</span>
+                    ) : (
+                      <Button
+                        type="button"
+                        onClick={() => handleClaim(shift)}
+                        disabled={isClaiming}
+                        className="h-auto rounded-full bg-[#111111] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#111111]/90 disabled:opacity-60"
+                      >
+                        {isClaiming ? 'Requesting…' : 'Claim'}
+                      </Button>
+                    )
+                  }
+                />
 
-                  <div className="open-shift-footer">
-                    <StatusPill
-                      status={shift.status}
-                      label={isPending ? 'Pending approval' : undefined}
-                    />
-
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      onClick={() => handleClaim(shift)}
-                      disabled={isPending || isClaiming}
-                    >
-                      {isPending ? 'Requested' : isClaiming ? 'Requesting…' : 'Claim'}
-                    </button>
-                  </div>
-
-                  {takenId === shift.id && (
-                    <p className="page-error">This shift was just taken.</p>
-                  )}
-                </div>
+                {takenId === shift.id && (
+                  <p className="mt-1.5 pl-1 text-xs text-red-700">This shift was just taken.</p>
+                )}
               </li>
             )
           })}
@@ -278,54 +350,60 @@ function TeamScheduleTab() {
   const shiftsByDay = groupByDayKey(shifts, (shift) => shift.starts_at)
   const days = getFourWeekDays()
 
-  if (loading) return <p className="page-status">Loading team schedule…</p>
-  if (error) return <p className="page-error">Could not load team schedule: {error}</p>
+  if (loading) return <p className="text-sm text-[#6B7280]">Loading team schedule…</p>
+  if (error) return <p className="text-sm text-red-700">Could not load team schedule: {error}</p>
 
   return (
-    <ul className="schedule-list">
+    <ul className="flex flex-col gap-3">
       {days.map((day) => {
         const dayShifts = shiftsByDay[day.key] ?? []
-        return (
-          <li key={day.key} className="schedule-day-row">
-            <div className="schedule-day-label">{day.label}</div>
-            <div className="schedule-day-content">
-              {dayShifts.length === 0 ? (
-                <p className="schedule-day-off">No shifts</p>
-              ) : (
-                dayShifts.map((shift) => {
-                  const displayName =
-                    shift.status === 'open'
-                      ? 'Open shift'
-                      : shift.status === 'pending'
-                        ? shift.claimant?.full_name ?? 'Pending claim'
-                        : shift.profiles?.full_name
-                  const displayCredential =
-                    shift.status === 'pending' ? shift.claimant?.credential : shift.profiles?.credential
 
-                  return (
-                    <div key={shift.id} className="team-shift-card">
-                      <div className="shift-card-header">
-                        <p className="team-shift-name">{displayName}</p>
-                        <StatusPill status={shift.status} />
-                      </div>
+        if (dayShifts.length === 0) {
+          return <DayOffRow key={day.key} label={day.label} text="No shifts" />
+        }
+
+        return dayShifts.map((shift) => {
+          const displayName =
+            shift.status === 'open'
+              ? 'Open shift'
+              : shift.status === 'pending'
+                ? (shift.claimant?.full_name ?? 'Pending claim')
+                : shift.profiles?.full_name
+          const displayCredential =
+            shift.status === 'pending' ? shift.claimant?.credential : shift.profiles?.credential
+
+          return (
+            <li key={shift.id}>
+              <ShiftCard
+                date={new Date(shift.starts_at)}
+                title={formatShiftTimeRange(shift.starts_at, shift.ends_at)}
+                pill={<StatusPill status={shift.status} />}
+                subtitle={
+                  <div className="mt-1">
+                    <p className="truncate text-sm font-medium text-[#111111]">{displayName}</p>
+                    <div className="mt-0.5 flex items-center gap-1.5">
+                      <p className="truncate text-xs text-[#9CA3AF]">{shift.unit}</p>
                       {displayCredential && (
-                        <p className="team-shift-credential">{displayCredential}</p>
+                        <>
+                          <span className="h-3 border-l border-[#E8E6E3]" />
+                          <p className="text-xs text-[#9CA3AF]">{displayCredential}</p>
+                        </>
                       )}
-                      <p className="team-shift-unit">{shift.unit}</p>
-                      <p className="team-shift-time">
-                        {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
-                      </p>
                     </div>
-                  )
-                })
-              )}
-            </div>
-          </li>
-        )
+                  </div>
+                }
+              />
+            </li>
+          )
+        })
       })}
     </ul>
   )
 }
+
+const inputClassName =
+  'w-full rounded-xl border border-[#E8E6E3] p-3 text-sm focus:border-[#111111] focus:outline-none'
+const labelClassName = 'text-xs font-medium tracking-wide text-[#6B7280] uppercase'
 
 function ManageTab() {
   const [nurses, setNurses] = useState([])
@@ -353,6 +431,11 @@ function ManageTab() {
   const [pendingError, setPendingError] = useState(null)
   const [actionError, setActionError] = useState(null)
   const [actioningId, setActioningId] = useState(null)
+
+  const [recentShifts, setRecentShifts] = useState([])
+  const [recentLoading, setRecentLoading] = useState(true)
+  const [recentError, setRecentError] = useState(null)
+  const [showAllRecent, setShowAllRecent] = useState(false)
 
   const [dupSourceDate, setDupSourceDate] = useState('')
   const [dupDestDate, setDupDestDate] = useState('')
@@ -403,6 +486,29 @@ function ManageTab() {
 
   useEffect(() => {
     fetchPendingClaims()
+  }, [])
+
+  async function fetchRecentShifts() {
+    setRecentLoading(true)
+    setRecentError(null)
+
+    const { data, error: fetchError } = await supabase
+      .from('shifts')
+      .select('id, unit, starts_at, ends_at, status, nurse_id, profiles!nurse_id ( full_name )')
+      .order('created_at', { ascending: false })
+
+    if (fetchError) {
+      setRecentError(fetchError.message)
+      setRecentShifts([])
+    } else {
+      setRecentShifts(data ?? [])
+    }
+
+    setRecentLoading(false)
+  }
+
+  useEffect(() => {
+    fetchRecentShifts()
   }, [])
 
   useEffect(() => {
@@ -476,6 +582,7 @@ function ManageTab() {
     } else {
       setSuccess(true)
       setForm({ nurse_id: '', unit: 'Unit 1', date: '', shift_type: 'day', unassigned: false })
+      fetchRecentShifts()
     }
   }
 
@@ -593,135 +700,188 @@ function ManageTab() {
     setDupSourceDate('')
     setDupDestDate('')
     setDupSourceShifts([])
+    fetchRecentShifts()
   }
 
   function handleCancelCopy() {
     setDupConfirm(null)
   }
 
-  if (loading) return <p className="page-status">Loading…</p>
+  if (loading) return <p className="text-sm text-[#6B7280]">Loading…</p>
+
+  const visibleRecentShifts = showAllRecent ? recentShifts : recentShifts.slice(0, 3)
 
   return (
-    <div className="manage-tab">
-      <h2>Post a Shift</h2>
+    <div className="flex flex-col gap-10">
+      <section>
+        <h2 className="mb-4 text-sm font-semibold text-[#111111]">Post a shift</h2>
 
-      <div className="manage-form">
-        <label className="manage-checkbox">
-          <input
-            type="checkbox"
-            checked={form.unassigned}
-            onChange={(e) =>
-              setForm({ ...form, unassigned: e.target.checked, nurse_id: '' })
-            }
-          />
-          Leave unassigned (open shift)
-        </label>
+        <div className="flex flex-col gap-4">
+          <label className="flex items-center gap-2 text-sm font-medium text-[#111111]">
+            <input
+              type="checkbox"
+              checked={form.unassigned}
+              onChange={(e) =>
+                setForm({ ...form, unassigned: e.target.checked, nurse_id: '' })
+              }
+              className="h-4 w-4 rounded border-[#E8E6E3] accent-[#111111]"
+            />
+            Leave unassigned (open shift)
+          </label>
 
-        <label>
-          Nurse
-          <select
-            value={form.nurse_id}
-            onChange={(e) => setForm({ ...form, nurse_id: e.target.value })}
-            disabled={form.unassigned}
+          <div className="flex flex-col gap-1.5">
+            <label className={labelClassName}>Nurse</label>
+            <select
+              value={form.nurse_id}
+              onChange={(e) => setForm({ ...form, nurse_id: e.target.value })}
+              disabled={form.unassigned}
+              className={cn(inputClassName, 'disabled:opacity-50')}
+            >
+              <option value="">Select a nurse</option>
+              {nurses.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.full_name} {n.credential ? `(${n.credential})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className={labelClassName}>Unit</label>
+            <select
+              value={form.unit}
+              onChange={(e) => setForm({ ...form, unit: e.target.value })}
+              className={inputClassName}
+            >
+              <option value="Unit 1">Unit 1</option>
+              <option value="Unit 2">Unit 2</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className={labelClassName}>Date</label>
+            <input
+              type="date"
+              value={form.date}
+              onChange={(e) => setForm({ ...form, date: e.target.value })}
+              className={inputClassName}
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className={labelClassName}>Shift</label>
+            <select
+              value={form.shift_type}
+              onChange={(e) => setForm({ ...form, shift_type: e.target.value })}
+              className={inputClassName}
+            >
+              <option value="day">Day (7am – 7pm)</option>
+              <option value="evening">Evening (3pm – 11pm)</option>
+              <option value="night">Night (11pm – 7am)</option>
+            </select>
+          </div>
+
+          {error && <p className="text-sm text-red-700">{error}</p>}
+          {success && <p className="text-sm text-[#16A34A]">Shift posted successfully.</p>}
+
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            disabled={saving}
+            className="h-auto w-full rounded-full bg-[#111111] py-3 text-base font-semibold text-white hover:bg-[#111111]/90 disabled:opacity-60"
           >
-            <option value="">Select a nurse</option>
-            {nurses.map((n) => (
-              <option key={n.id} value={n.id}>
-                {n.full_name} {n.credential ? `(${n.credential})` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
+            {saving ? 'Posting…' : 'Post shift'}
+          </Button>
+        </div>
+      </section>
 
-        <label>
-          Unit
-          <select
-            value={form.unit}
-            onChange={(e) => setForm({ ...form, unit: e.target.value })}
-          >
-            <option value="Unit 1">Unit 1</option>
-            <option value="Unit 2">Unit 2</option>
-          </select>
-        </label>
+      <section>
+        <h2 className="mb-4 text-sm font-semibold text-[#111111]">Recent shifts</h2>
 
-        <label>
-          Date
-          <input
-            type="date"
-            value={form.date}
-            onChange={(e) => setForm({ ...form, date: e.target.value })}
-          />
-        </label>
-
-        <label>
-          Shift
-          <select
-            value={form.shift_type}
-            onChange={(e) => setForm({ ...form, shift_type: e.target.value })}
-          >
-            <option value="day">Day (7am – 7pm)</option>
-            <option value="evening">Evening (3pm – 11pm)</option>
-            <option value="night">Night (11pm – 7am)</option>
-          </select>
-        </label>
-
-        {error && <p className="page-error">{error}</p>}
-        {success && <p className="page-success">Shift posted successfully.</p>}
-
-        <button
-          type="button"
-          className="btn-primary"
-          onClick={handleSubmit}
-          disabled={saving}
-        >
-          {saving ? 'Posting…' : 'Post Shift'}
-        </button>
-      </div>
-
-      <h2 className="manage-section-heading">Pending claims</h2>
-
-      <div className="manage-form">
-        {pendingLoading && <p className="page-status">Loading pending claims…</p>}
-        {pendingError && (
-          <p className="page-error">Could not load pending claims: {pendingError}</p>
+        {recentLoading && <p className="text-sm text-[#6B7280]">Loading…</p>}
+        {!recentLoading && recentError && (
+          <p className="text-sm text-red-700">Could not load recent shifts: {recentError}</p>
         )}
-        {actionError && <p className="page-error">{actionError}</p>}
+
+        {!recentLoading && !recentError && (
+          recentShifts.length === 0 ? (
+            <p className="text-sm text-[#6B7280]">No shifts posted yet.</p>
+          ) : (
+            <>
+              <ul className="flex flex-col gap-3">
+                {visibleRecentShifts.map((shift) => (
+                  <li key={shift.id}>
+                    <ShiftCard
+                      date={new Date(shift.starts_at)}
+                      title={formatShiftTimeRange(shift.starts_at, shift.ends_at)}
+                      pill={<StatusPill status={shift.status} />}
+                      subtitle={
+                        <div className="mt-1">
+                          <p className="truncate text-xs text-[#9CA3AF]">
+                            {shift.profiles?.full_name ?? 'Open'}
+                          </p>
+                          <p className="mt-0.5 truncate text-xs text-[#9CA3AF]">{shift.unit}</p>
+                        </div>
+                      }
+                    />
+                  </li>
+                ))}
+              </ul>
+
+              {recentShifts.length > 3 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllRecent((current) => !current)}
+                  className="mt-3 text-sm text-[#6B7280] hover:underline"
+                >
+                  {showAllRecent ? 'Show less' : 'Show all'}
+                </button>
+              )}
+            </>
+          )
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-4 text-sm font-semibold text-[#111111]">Pending claims</h2>
+
+        {pendingLoading && <p className="text-sm text-[#6B7280]">Loading pending claims…</p>}
+        {pendingError && (
+          <p className="text-sm text-red-700">Could not load pending claims: {pendingError}</p>
+        )}
+        {actionError && <p className="mb-3 text-sm text-red-700">{actionError}</p>}
 
         {!pendingLoading && !pendingError && pendingClaims.length === 0 && (
-          <p className="page-status">No pending claims.</p>
+          <p className="text-sm text-[#6B7280]">No pending claims.</p>
         )}
 
         {!pendingLoading && pendingClaims.length > 0 && (
-          <ul className="shift-list">
+          <ul className="flex flex-col gap-3">
             {pendingClaims.map((claim) => (
               <li key={claim.id}>
-                <div className="shift-card pending-claim-card">
-                  <div className="shift-card-header">
-                    <p className="shift-unit">{claim.unit}</p>
-                    <StatusPill status="pending" />
-                  </div>
-                  <p className="shift-date">{formatShiftDate(claim.starts_at)}</p>
-                  <p className="shift-time">
-                    {formatShiftTimeRange(claim.starts_at, claim.ends_at)}
-                  </p>
-                  <p className="pending-claim-nurse">
-                    Claimed by {claim.claimant?.full_name ?? 'Unknown'}
+                <div className="rounded-xl bg-white p-4 shadow-sm">
+                  <p className="text-sm font-semibold text-[#111111]">
+                    {claim.claimant?.full_name ?? 'Unknown'}
                     {claim.claimant?.credential ? ` (${claim.claimant.credential})` : ''}
                   </p>
-                  <div className="dup-confirm-actions">
+                  <p className="mt-1 text-sm text-[#6B7280]">
+                    {claim.unit} · {formatShiftDate(claim.starts_at)} ·{' '}
+                    {formatShiftTimeRange(claim.starts_at, claim.ends_at)}
+                  </p>
+                  <div className="mt-3 flex gap-2">
                     <button
                       type="button"
-                      className="btn-primary"
                       onClick={() => handleApprove(claim)}
                       disabled={actioningId === claim.id}
+                      className="rounded-full bg-[#111111] px-4 py-1.5 text-sm font-medium text-white disabled:opacity-60"
                     >
                       {actioningId === claim.id ? 'Approving…' : 'Approve'}
                     </button>
                     <button
                       type="button"
-                      className="btn-secondary"
                       onClick={() => handleDeny(claim)}
                       disabled={actioningId === claim.id}
+                      className="rounded-full border border-[#E8E6E3] px-4 py-1.5 text-sm font-medium text-[#111111] disabled:opacity-60"
                     >
                       {actioningId === claim.id ? 'Denying…' : 'Deny'}
                     </button>
@@ -731,107 +891,112 @@ function ManageTab() {
             ))}
           </ul>
         )}
-      </div>
+      </section>
 
-      <h2 className="manage-section-heading">Duplicate a week</h2>
+      <section>
+        <h2 className="mb-4 text-sm font-semibold text-[#111111]">Duplicate a week</h2>
 
-      <div className="manage-form">
-        <label>
-          Source week (any day in that week)
-          <input
-            type="date"
-            value={dupSourceDate}
-            onChange={(e) => {
-              setDupSourceDate(e.target.value)
-              setDupConfirm(null)
-              setDupSuccess(null)
-            }}
-          />
-          {dupSourceDate && (
-            <span className="dup-hint">
-              Week of {formatWeekRangeLabel(getWeekStart(`${dupSourceDate}T00:00:00`))}
-            </span>
-          )}
-        </label>
-
-        <label>
-          Destination week (any day in that week)
-          <input
-            type="date"
-            value={dupDestDate}
-            onChange={(e) => {
-              setDupDestDate(e.target.value)
-              setDupConfirm(null)
-              setDupSuccess(null)
-            }}
-          />
-          {dupDestDate && (
-            <span className="dup-hint">
-              Week of {formatWeekRangeLabel(getWeekStart(`${dupDestDate}T00:00:00`))}
-            </span>
-          )}
-        </label>
-
-        {dupSourceDate && !dupSourceLoading && dupSourceShifts.length === 0 && (
-          <p className="page-status">No shifts in the selected week.</p>
-        )}
-
-        {dupError && <p className="page-error">{dupError}</p>}
-        {dupSuccess && <p className="page-success">{dupSuccess}</p>}
-
-        {dupConfirm ? (
-          <div className="dup-confirm">
-            <p>
-              Copy {dupConfirm.count} shift{dupConfirm.count === 1 ? '' : 's'} to the week of{' '}
-              {formatWeekRangeLabel(dupConfirm.destStart)}?
-            </p>
-            {dupConfirm.destConflictCount > 0 && (
-              <p className="page-error">
-                The destination week already has {dupConfirm.destConflictCount} shift
-                {dupConfirm.destConflictCount === 1 ? '' : 's'}. Copying may create duplicate
-                bookings.
-              </p>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className={labelClassName}>Source week (any day in that week)</label>
+            <input
+              type="date"
+              value={dupSourceDate}
+              onChange={(e) => {
+                setDupSourceDate(e.target.value)
+                setDupConfirm(null)
+                setDupSuccess(null)
+              }}
+              className={inputClassName}
+            />
+            {dupSourceDate && (
+              <span className="text-xs text-[#9CA3AF]">
+                Week of {formatWeekRangeLabel(getWeekStart(`${dupSourceDate}T00:00:00`))}
+              </span>
             )}
-            <div className="dup-confirm-actions">
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleConfirmCopy}
-                disabled={dupSaving}
-              >
-                {dupSaving
-                  ? 'Copying…'
-                  : dupConfirm.destConflictCount > 0
-                    ? 'Copy anyway (may create duplicates)'
-                    : 'Confirm copy'}
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={handleCancelCopy}
-                disabled={dupSaving}
-              >
-                Cancel
-              </button>
-            </div>
           </div>
-        ) : (
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={handleReviewCopy}
-            disabled={
-              !dupSourceDate ||
-              !dupDestDate ||
-              dupSourceLoading ||
-              dupChecking ||
-              dupSourceShifts.length === 0
-            }
-          >
-            {dupChecking ? 'Checking…' : 'Copy shifts'}
-          </button>
-        )}
-      </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className={labelClassName}>Destination week (any day in that week)</label>
+            <input
+              type="date"
+              value={dupDestDate}
+              onChange={(e) => {
+                setDupDestDate(e.target.value)
+                setDupConfirm(null)
+                setDupSuccess(null)
+              }}
+              className={inputClassName}
+            />
+            {dupDestDate && (
+              <span className="text-xs text-[#9CA3AF]">
+                Week of {formatWeekRangeLabel(getWeekStart(`${dupDestDate}T00:00:00`))}
+              </span>
+            )}
+          </div>
+
+          {dupSourceDate && !dupSourceLoading && dupSourceShifts.length === 0 && (
+            <p className="text-sm text-[#6B7280]">No shifts in the selected week.</p>
+          )}
+
+          {dupError && <p className="text-sm text-red-700">{dupError}</p>}
+          {dupSuccess && <p className="text-sm text-[#16A34A]">{dupSuccess}</p>}
+
+          {dupConfirm ? (
+            <div className="rounded-xl bg-white p-4 shadow-sm">
+              <p className="text-sm text-[#111111]">
+                Copy {dupConfirm.count} shift{dupConfirm.count === 1 ? '' : 's'} to the week of{' '}
+                {formatWeekRangeLabel(dupConfirm.destStart)}?
+              </p>
+              {dupConfirm.destConflictCount > 0 && (
+                <p className="mt-2 text-sm text-[#D97706]">
+                  The destination week already has {dupConfirm.destConflictCount} shift
+                  {dupConfirm.destConflictCount === 1 ? '' : 's'}. Copying may create duplicate
+                  bookings.
+                </p>
+              )}
+              <div className="mt-3 flex gap-2">
+                <Button
+                  type="button"
+                  onClick={handleConfirmCopy}
+                  disabled={dupSaving}
+                  className="h-auto flex-1 rounded-full bg-[#111111] py-2.5 text-sm font-semibold text-white hover:bg-[#111111]/90 disabled:opacity-60"
+                >
+                  {dupSaving
+                    ? 'Copying…'
+                    : dupConfirm.destConflictCount > 0
+                      ? 'Copy anyway'
+                      : 'Confirm copy'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCancelCopy}
+                  disabled={dupSaving}
+                  className="h-auto flex-1 rounded-full border-[#E8E6E3] py-2.5 text-sm font-semibold text-[#111111] shadow-none hover:bg-white"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              onClick={handleReviewCopy}
+              disabled={
+                !dupSourceDate ||
+                !dupDestDate ||
+                dupSourceLoading ||
+                dupChecking ||
+                dupSourceShifts.length === 0
+              }
+              className="h-auto w-full rounded-full bg-[#111111] py-3 text-base font-semibold text-white hover:bg-[#111111]/90 disabled:opacity-60"
+            >
+              {dupChecking ? 'Checking…' : 'Copy shifts'}
+            </Button>
+          )}
+        </div>
+      </section>
     </div>
   )
 }
@@ -840,54 +1005,38 @@ export default function Schedule({ user, role, initialTab = 'my' }) {
   const [activeTab, setActiveTab] = useState(initialTab)
   const isCoordinator = role === 'coordinator'
 
-  return (
-    <main className="page schedule">
-      <h1>Schedule</h1>
+  const tabs = [
+    { id: 'my', label: 'My Shifts' },
+    ...(!isCoordinator ? [{ id: 'open', label: 'Open Shifts' }] : []),
+    { id: 'team', label: 'Team Schedule' },
+    ...(isCoordinator ? [{ id: 'manage', label: 'Manage' }] : []),
+  ]
 
-      <div className="schedule-tabs" role="tablist" aria-label="Schedule views">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'my'}
-          className={activeTab === 'my' ? 'active' : undefined}
-          onClick={() => setActiveTab('my')}
-        >
-          My Shifts
-        </button>
-        {!isCoordinator && (
+  return (
+    <main className="mx-auto w-full max-w-md px-5 pt-12 pb-12">
+      <h1 className="mb-6 text-3xl font-bold tracking-tight text-[#111111]">Schedule</h1>
+
+      <div className="mb-6 flex border-b border-[#E8E6E3]" role="tablist" aria-label="Schedule views">
+        {tabs.map((tab) => (
           <button
+            key={tab.id}
             type="button"
             role="tab"
-            aria-selected={activeTab === 'open'}
-            className={activeTab === 'open' ? 'active' : undefined}
-            onClick={() => setActiveTab('open')}
+            aria-selected={activeTab === tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={cn(
+              'flex-1 border-b-2 px-2 py-3 text-sm font-medium transition-colors',
+              activeTab === tab.id
+                ? 'border-[#111111] font-semibold text-[#111111]'
+                : 'border-transparent text-[#9CA3AF]',
+            )}
           >
-            Open Shifts
+            {tab.label}
           </button>
-        )}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={activeTab === 'team'}
-          className={activeTab === 'team' ? 'active' : undefined}
-          onClick={() => setActiveTab('team')}
-        >
-          Team Schedule
-        </button>
-        {isCoordinator && (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeTab === 'manage'}
-            className={activeTab === 'manage' ? 'active' : undefined}
-            onClick={() => setActiveTab('manage')}
-          >
-            Manage
-          </button>
-        )}
+        ))}
       </div>
 
-      <div className="schedule-panel" role="tabpanel">
+      <div role="tabpanel">
         {activeTab === 'my' && <MyShiftsTab user={user} />}
         {activeTab === 'open' && !isCoordinator && <OpenShiftsTab user={user} />}
         {activeTab === 'team' && <TeamScheduleTab />}
