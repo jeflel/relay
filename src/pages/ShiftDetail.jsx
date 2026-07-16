@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { ChevronLeft, Users } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { ShiftPeriodPill } from '@/components/ui/pill'
 import {
@@ -7,12 +8,37 @@ import {
   getShiftPeriod,
 } from '../lib/shiftFormat'
 
+function getInitials(fullName) {
+  if (!fullName) return '?'
+  const parts = fullName.trim().split(/\s+/)
+  const initials = parts.length === 1 ? parts[0][0] : parts[0][0] + parts[parts.length - 1][0]
+  return initials.toUpperCase()
+}
+
 export default function ShiftDetail({ shift, user, onBack }) {
   const [coworkers, setCoworkers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [credential, setCredential] = useState(null)
 
   const period = getShiftPeriod(shift.starts_at)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchCredential() {
+      const { data } = await supabase
+        .from('profiles')
+        .select('credential')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (!cancelled) setCredential(data?.credential ?? null)
+    }
+
+    fetchCredential()
+    return () => { cancelled = true }
+  }, [user.id])
 
   useEffect(() => {
     let cancelled = false
@@ -28,7 +54,7 @@ export default function ShiftDetail({ shift, user, onBack }) {
           nurse_id,
           starts_at,
           ends_at,
-          profiles (
+          profiles!nurse_id (
             full_name,
             credential
           )
@@ -39,6 +65,8 @@ export default function ShiftDetail({ shift, user, onBack }) {
         .gt('ends_at', shift.starts_at)
 
       if (cancelled) return
+
+      console.log('raw coworkers data', data, fetchError)
 
       if (fetchError) {
         setError(fetchError.message)
@@ -53,10 +81,14 @@ export default function ShiftDetail({ shift, user, onBack }) {
       for (const row of data ?? []) {
         if (seenNurseIds.has(row.nurse_id)) continue
         seenNurseIds.add(row.nurse_id)
+
+        // PostgREST may return the embed as an object or a single-element array
+        const profile = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles
+
         uniqueCoworkers.push({
           nurseId: row.nurse_id,
-          full_name: row.profiles?.full_name,
-          credential: row.profiles?.credential,
+          full_name: profile?.full_name ?? null,
+          credential: profile?.credential ?? null,
           starts_at: row.starts_at,
           ends_at: row.ends_at,
         })
@@ -74,45 +106,75 @@ export default function ShiftDetail({ shift, user, onBack }) {
   }, [shift, user.id])
 
   return (
-    <div className="shift-detail">
-      <main className="page shift-detail-page">
-        <button type="button" className="back-button" onClick={onBack}>
-          ← Back
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-white">
+      <main className="mx-auto w-full max-w-md px-5 pt-8 pb-12">
+        <button
+          type="button"
+          onClick={onBack}
+          className="mb-6 inline-flex items-center gap-1 text-sm font-medium text-[#6B7280]"
+        >
+          <ChevronLeft size={18} strokeWidth={2} />
+          Back
         </button>
 
-        <div className="shift-detail-header">
-          <div className="shift-card-header">
-            <p className="shift-unit">{shift.unit}</p>
+        <div className="rounded-2xl bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-2xl font-bold text-[#111111]">
+              {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
+            </p>
             <ShiftPeriodPill period={period} />
           </div>
-          <p className="shift-date">{formatShiftDate(shift.starts_at)}</p>
-          <p className="shift-time">
-            {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
-          </p>
+
+          <div className="mt-1 flex items-center gap-1.5">
+            <p className="text-xs text-[#9CA3AF]">{shift.unit}</p>
+            {credential && (
+              <>
+                <span className="h-3 border-l border-[#E8E6E3]" />
+                <p className="text-xs text-[#9CA3AF]">{credential}</p>
+              </>
+            )}
+          </div>
+
+          <p className="mt-3 text-sm text-[#6B7280]">{formatShiftDate(shift.starts_at)}</p>
         </div>
 
-        <section className="coworkers-section">
-          <h2>Working with</h2>
+        <section className="mt-9">
+          <h2 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-[#111111]">
+            <Users size={14} strokeWidth={2.5} />
+            Working with
+          </h2>
 
-          {loading && <p className="page-status">Loading coworkers…</p>}
+          {loading && <p className="text-sm text-[#6B7280]">Loading coworkers…</p>}
 
           {!loading && error && (
-            <p className="page-error">Could not load coworkers: {error}</p>
+            <p className="text-sm text-red-700">Could not load coworkers: {error}</p>
           )}
 
           {!loading && !error && coworkers.length === 0 && (
-            <p className="page-status">No coworkers scheduled for this shift</p>
+            <p className="text-sm text-[#6B7280]">No coworkers on this shift</p>
           )}
 
           {!loading && !error && coworkers.length > 0 && (
-            <ul className="coworker-list">
+            <ul className="flex flex-col">
               {coworkers.map((coworker) => (
-                <li key={coworker.nurseId} className="coworker-card">
-                  <p className="coworker-name">{coworker.full_name}</p>
-                  {coworker.credential && (
-                    <p className="coworker-credential">{coworker.credential}</p>
-                  )}
-                  <p className="coworker-time">
+                <li
+                  key={coworker.nurseId}
+                  className="flex items-center gap-3 border-b border-[#E8E6E3] py-3 last:border-b-0"
+                >
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#F8F7F5] text-xs font-semibold text-[#6B7280]">
+                    {getInitials(coworker.full_name)}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-[#111111]">
+                      {coworker.full_name}
+                    </p>
+                    {coworker.credential && (
+                      <p className="text-xs text-[#9CA3AF]">{coworker.credential}</p>
+                    )}
+                  </div>
+
+                  <p className="shrink-0 text-xs text-[#9CA3AF]">
                     {formatShiftTimeRange(coworker.starts_at, coworker.ends_at)}
                   </p>
                 </li>

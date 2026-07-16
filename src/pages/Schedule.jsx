@@ -19,6 +19,25 @@ import {
 const weekdayFormatter = new Intl.DateTimeFormat(undefined, { weekday: 'short' })
 const monthFormatter = new Intl.DateTimeFormat(undefined, { month: 'short' })
 
+function getInitials(fullName) {
+  if (!fullName) return '?'
+  const parts = fullName.trim().split(/\s+/)
+  const initials = parts.length === 1 ? parts[0][0] : parts[0][0] + parts[parts.length - 1][0]
+  return initials.toUpperCase()
+}
+
+function groupByTimeSlot(dayShifts) {
+  const groups = new Map()
+
+  for (const shift of dayShifts) {
+    const key = `${shift.starts_at}__${shift.ends_at}`
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(shift)
+  }
+
+  return Array.from(groups.values())
+}
+
 function formatWeekRangeLabel(weekStart) {
   const weekEnd = new Date(weekStart)
   weekEnd.setDate(weekEnd.getDate() + 6)
@@ -354,7 +373,7 @@ function TeamScheduleTab() {
   if (error) return <p className="text-sm text-red-700">Could not load team schedule: {error}</p>
 
   return (
-    <ul className="flex flex-col gap-3">
+    <ul className="flex flex-col gap-4">
       {days.map((day) => {
         const dayShifts = shiftsByDay[day.key] ?? []
 
@@ -362,40 +381,87 @@ function TeamScheduleTab() {
           return <DayOffRow key={day.key} label={day.label} text="No shifts" />
         }
 
-        return dayShifts.map((shift) => {
-          const displayName =
-            shift.status === 'open'
-              ? 'Open shift'
-              : shift.status === 'pending'
-                ? (shift.claimant?.full_name ?? 'Pending claim')
-                : shift.profiles?.full_name
-          const displayCredential =
-            shift.status === 'pending' ? shift.claimant?.credential : shift.profiles?.credential
+        const timeSlots = groupByTimeSlot(dayShifts)
+        const dayHeaderLabel = `${weekdayFormatter.format(day.date)} ${day.date.getDate()} ${monthFormatter.format(day.date)}`
 
-          return (
-            <li key={shift.id}>
-              <ShiftCard
-                date={new Date(shift.starts_at)}
-                title={formatShiftTimeRange(shift.starts_at, shift.ends_at)}
-                pill={<StatusPill status={shift.status} />}
-                subtitle={
-                  <div className="mt-1">
-                    <p className="truncate text-sm font-medium text-[#111111]">{displayName}</p>
-                    <div className="mt-0.5 flex items-center gap-1.5">
-                      <p className="truncate text-xs text-[#9CA3AF]">{shift.unit}</p>
-                      {displayCredential && (
-                        <>
-                          <span className="h-3 border-l border-[#E8E6E3]" />
-                          <p className="text-xs text-[#9CA3AF]">{displayCredential}</p>
-                        </>
-                      )}
+        return (
+          <li key={day.key}>
+            <p className="mb-2 text-sm font-medium text-[#6B7280] uppercase">{dayHeaderLabel}</p>
+
+            <div className="flex flex-col gap-3">
+              {timeSlots.map((slotShifts) => {
+                const [firstShift] = slotShifts
+                const period = getShiftPeriod(firstShift.starts_at)
+                const units = Array.from(new Set(slotShifts.map((shift) => shift.unit)))
+
+                return (
+                  <div
+                    key={`${firstShift.starts_at}__${firstShift.ends_at}`}
+                    className="rounded-xl bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-[#111111]">
+                        {formatShiftTimeRange(firstShift.starts_at, firstShift.ends_at)}
+                      </p>
+                      <ShiftPeriodPill period={period} />
                     </div>
+                    <p className="mt-0.5 text-xs text-[#9CA3AF]">{units.join(', ')}</p>
+
+                    <div className="mt-3 border-b border-[#E8E6E3]" />
+
+                    <ul className="flex flex-col">
+                      {slotShifts.map((shift) => {
+                        if (shift.status === 'open') {
+                          return (
+                            <li
+                              key={shift.id}
+                              className="flex items-center justify-between border-b border-[#E8E6E3] py-3 last:border-b-0"
+                            >
+                              <p className="text-sm text-[#9CA3AF]">Open shift</p>
+                              <StatusPill status="open" />
+                            </li>
+                          )
+                        }
+
+                        const displayName =
+                          shift.status === 'pending'
+                            ? (shift.claimant?.full_name ?? 'Pending claim')
+                            : shift.profiles?.full_name
+                        const displayCredential =
+                          shift.status === 'pending'
+                            ? shift.claimant?.credential
+                            : shift.profiles?.credential
+
+                        return (
+                          <li
+                            key={shift.id}
+                            className="flex items-center gap-3 border-b border-[#E8E6E3] py-3 last:border-b-0"
+                          >
+                            <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#F8F7F5] text-xs font-semibold text-[#6B7280]">
+                              {getInitials(displayName)}
+                            </div>
+
+                            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                              <p className="truncate text-sm font-medium text-[#111111]">
+                                {displayName}
+                              </p>
+                              {displayCredential && (
+                                <>
+                                  <span className="h-3 border-l border-[#E8E6E3]" />
+                                  <p className="text-xs text-[#9CA3AF]">{displayCredential}</p>
+                                </>
+                              )}
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
                   </div>
-                }
-              />
-            </li>
-          )
-        })
+                )
+              })}
+            </div>
+          </li>
+        )
       })}
     </ul>
   )

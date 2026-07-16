@@ -2,9 +2,9 @@ import { Sun, Sunset, Moon, Circle, Clock, CheckCircle2, XCircle } from 'lucide-
 import { cn } from '@/lib/utils'
 
 const PERIOD_CONFIG = {
-  Day: { label: 'Day', icon: Sun, className: 'bg-[#EAB308] px-3.5 py-1.5 text-[#111111]' },
-  Evening: { label: 'Evening', icon: Sunset, className: 'bg-[#7C3AED] px-3.5 py-1.5 text-white' },
-  Night: { label: 'Night', icon: Moon, className: 'bg-[#2563EB] px-3.5 py-1.5 text-white' },
+  Day: { label: 'Day', icon: Sun, className: 'bg-[#7BD3FB] px-3.5 py-1.5 text-white' },
+  Evening: { label: 'Evening', icon: Sunset, className: 'bg-[#FF5778] px-3.5 py-1.5 text-white' },
+  Night: { label: 'Night', icon: Moon, className: 'bg-[#7978DE] px-3.5 py-1.5 text-white' },
 }
 
 const STATUS_CONFIG = {
