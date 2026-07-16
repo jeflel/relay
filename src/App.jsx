@@ -7,11 +7,16 @@ import Home from './pages/Home'
 import Schedule from './pages/Schedule'
 import More from './pages/More'
 
+const ROLE_OVERRIDE_KEY = 'dev_role_override'
+
 function App() {
   const [session, setSession] = useState(null)
   const [role, setRole] = useState(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('home')
+  const [roleOverride, setRoleOverride] = useState(() =>
+    isLocalDev ? localStorage.getItem(ROLE_OVERRIDE_KEY) : null,
+  )
 
   useEffect(() => {
     let active = true
@@ -70,6 +75,15 @@ function App() {
     setLoading(false)
   }
 
+  function handleRoleOverrideChange(newRole) {
+    setRoleOverride(newRole)
+    if (newRole) {
+      localStorage.setItem(ROLE_OVERRIDE_KEY, newRole)
+    } else {
+      localStorage.removeItem(ROLE_OVERRIDE_KEY)
+    }
+  }
+
   if (loading) return null
   if (!session && !isLocalDev) return <Auth />
   if (!session) {
@@ -84,12 +98,21 @@ function App() {
     )
   }
 
+  const effectiveRole = roleOverride || role
+
   return (
     <div className="app-shell">
       <div className="app-content">
-        {activeTab === 'home' && <Home user={session.user} role={role} />}
-        {activeTab === 'schedule' && <Schedule user={session.user} role={role} />}
-        {activeTab === 'more' && <More />}
+        {activeTab === 'home' && <Home user={session.user} role={effectiveRole} onTabChange={setActiveTab} />}
+        {activeTab === 'schedule' && <Schedule user={session.user} role={effectiveRole} />}
+        {activeTab === 'more' && (
+          <More
+            isLocalDev={isLocalDev}
+            actualRole={role}
+            roleOverride={roleOverride}
+            onRoleOverrideChange={handleRoleOverrideChange}
+          />
+        )}
       </div>
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
     </div>

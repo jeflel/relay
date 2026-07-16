@@ -95,6 +95,63 @@ export function getFourWeekDays() {
   return days
 }
 
+export function getWeekStart(date) {
+  const start = new Date(date)
+  start.setHours(0, 0, 0, 0)
+  const day = start.getDay() // 0 = Sunday ... 6 = Saturday
+  const diffToMonday = day === 0 ? -6 : 1 - day
+  start.setDate(start.getDate() + diffToMonday)
+  return start
+}
+
+export function getWeekRange(weekStart) {
+  const start = new Date(weekStart)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(start)
+  end.setDate(end.getDate() + 7)
+  return { start, end }
+}
+
+// Shifts a timestamp forward/back by a whole number of calendar days using local
+// wall-clock components (year/month/day/hour/minute/second) instead of raw
+// millisecond arithmetic. This keeps the local time-of-day fixed (e.g. a 7:00am
+// shift stays 7:00am) even across a daylight-saving transition — adding
+// `days * 86400000` ms directly would drift by the DST offset instead.
+export function addLocalDays(isoString, days) {
+  const d = new Date(isoString)
+  return new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate() + days,
+    d.getHours(),
+    d.getMinutes(),
+    d.getSeconds(),
+    d.getMilliseconds(),
+  ).toISOString()
+}
+
+// Whole-day difference between two dates, compared by calendar date only
+// (ignoring time-of-day, so a DST change between the two doesn't skew the count).
+export function diffInCalendarDays(fromDate, toDate) {
+  const utcFrom = Date.UTC(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate())
+  const utcTo = Date.UTC(toDate.getFullYear(), toDate.getMonth(), toDate.getDate())
+  return Math.round((utcTo - utcFrom) / 86400000)
+}
+
+export function getStatusLabel(status) {
+  switch (status) {
+    case 'open': return 'Open'
+    case 'pending': return 'Pending'
+    case 'scheduled': return 'Assigned'
+    case 'cancelled': return 'Cancelled'
+    default: return status
+  }
+}
+
+export function getStatusModifier(status) {
+  return status === 'scheduled' ? 'assigned' : status
+}
+
 export function groupByDayKey(items, getStartsAt) {
   const grouped = {}
 
