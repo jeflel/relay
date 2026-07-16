@@ -138,20 +138,6 @@ export function diffInCalendarDays(fromDate, toDate) {
   return Math.round((utcTo - utcFrom) / 86400000)
 }
 
-export function getStatusLabel(status) {
-  switch (status) {
-    case 'open': return 'Open'
-    case 'pending': return 'Pending'
-    case 'scheduled': return 'Assigned'
-    case 'cancelled': return 'Cancelled'
-    default: return status
-  }
-}
-
-export function getStatusModifier(status) {
-  return status === 'scheduled' ? 'assigned' : status
-}
-
 export function groupByDayKey(items, getStartsAt) {
   const grouped = {}
 

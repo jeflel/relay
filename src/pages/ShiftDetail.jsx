@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { ShiftPeriodPill } from '@/components/ui/pill'
 import {
   formatShiftDate,
   formatShiftTimeRange,
@@ -82,9 +83,7 @@ export default function ShiftDetail({ shift, user, onBack }) {
         <div className="shift-detail-header">
           <div className="shift-card-header">
             <p className="shift-unit">{shift.unit}</p>
-            <span className={`shift-period shift-period--${period.toLowerCase()}`}>
-              {period}
-            </span>
+            <ShiftPeriodPill period={period} />
           </div>
           <p className="shift-date">{formatShiftDate(shift.starts_at)}</p>
           <p className="shift-time">

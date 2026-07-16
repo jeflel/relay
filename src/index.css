@@ -299,54 +299,6 @@ body {
   font-weight: 600;
 }
 
-.shift-period {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #fff;
-  padding: 0.125rem 0.5rem;
-  border-radius: 999px;
-}
-
-.shift-period--day {
-  background: #2563eb;
-}
-
-.shift-period--evening {
-  background: #ea580c;
-}
-
-.shift-period--night {
-  background: #4c1d95;
-}
-
-.status-pill {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #fff;
-  padding: 0.125rem 0.5rem;
-  border-radius: 999px;
-}
-
-.status-pill--open {
-  background: #16a34a;
-}
-
-.status-pill--pending {
-  background: #d97706;
-}
-
-.status-pill--assigned {
-  background: #4b5563;
-}
-
-.status-pill--cancelled {
-  background: #dc2626;
-}
-
 .shift-date {
   color: #374151;
   font-size: 0.9375rem;

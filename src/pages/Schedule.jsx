@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { ShiftPeriodPill, StatusPill } from '@/components/ui/pill'
 import {
   addLocalDays,
   diffInCalendarDays,
@@ -8,8 +9,6 @@ import {
   getFourWeekDays,
   getFourWeekRange,
   getShiftPeriod,
-  getStatusLabel,
-  getStatusModifier,
   getWeekRange,
   getWeekStart,
   groupByDayKey,
@@ -87,18 +86,15 @@ function MyShiftsTab({ user }) {
                     <div key={shift.id} className="shift-card schedule-shift-card">
                       <div className="shift-card-header">
                         <p className="shift-unit">{shift.unit}</p>
-                        <span className={`shift-period shift-period--${period.toLowerCase()}`}>
-                          {period}
-                        </span>
+                        <ShiftPeriodPill period={period} />
                       </div>
                       <p className="shift-time">
                         {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
                       </p>
-                      <span
-                        className={`status-pill status-pill--${getStatusModifier(shift.status)}`}
-                      >
-                        {shift.status === 'pending' ? 'Pending approval' : getStatusLabel(shift.status)}
-                      </span>
+                      <StatusPill
+                        status={shift.status}
+                        label={shift.status === 'pending' ? 'Pending approval' : undefined}
+                      />
                     </div>
                   )
                 })
@@ -203,9 +199,7 @@ function OpenShiftsTab({ user }) {
                 <div className="shift-card open-shift-card">
                   <div className="shift-card-header">
                     <p className="shift-unit">{shift.unit}</p>
-                    <span className={`shift-period shift-period--${period.toLowerCase()}`}>
-                      {period}
-                    </span>
+                    <ShiftPeriodPill period={period} />
                   </div>
                   <p className="shift-date">{formatShiftDate(shift.starts_at)}</p>
                   <p className="shift-time">
@@ -213,11 +207,10 @@ function OpenShiftsTab({ user }) {
                   </p>
 
                   <div className="open-shift-footer">
-                    <span
-                      className={`status-pill status-pill--${getStatusModifier(shift.status)}`}
-                    >
-                      {isPending ? 'Pending approval' : getStatusLabel(shift.status)}
-                    </span>
+                    <StatusPill
+                      status={shift.status}
+                      label={isPending ? 'Pending approval' : undefined}
+                    />
 
                     <button
                       type="button"
@@ -313,11 +306,7 @@ function TeamScheduleTab() {
                     <div key={shift.id} className="team-shift-card">
                       <div className="shift-card-header">
                         <p className="team-shift-name">{displayName}</p>
-                        <span
-                          className={`status-pill status-pill--${getStatusModifier(shift.status)}`}
-                        >
-                          {getStatusLabel(shift.status)}
-                        </span>
+                        <StatusPill status={shift.status} />
                       </div>
                       {displayCredential && (
                         <p className="team-shift-credential">{displayCredential}</p>
@@ -709,11 +698,7 @@ function ManageTab() {
                 <div className="shift-card pending-claim-card">
                   <div className="shift-card-header">
                     <p className="shift-unit">{claim.unit}</p>
-                    <span
-                      className={`status-pill status-pill--${getStatusModifier('pending')}`}
-                    >
-                      {getStatusLabel('pending')}
-                    </span>
+                    <StatusPill status="pending" />
                   </div>
                   <p className="shift-date">{formatShiftDate(claim.starts_at)}</p>
                   <p className="shift-time">
