@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: 'Geist', sans-serif;
+  --color-ink: #111111;
+  --color-surface: #f8f7f5;
+  --color-line: #e8e6e3;
+  --radius-card: 0.75rem;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -92,4 +100,8 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+}
+
+body {
+  font-family: var(--font-sans);
 }
