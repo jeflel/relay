@@ -7,7 +7,6 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
-  formatDayLabel,
   formatLocalDateKey,
   formatShiftDate,
   formatShiftTimeRange,
@@ -266,33 +265,38 @@ function CoordinatorSummary({ shifts, today, onGoToManage }) {
   return (
     <section>
       <div className="grid grid-cols-3 gap-3">
-        <Card className="gap-2 rounded-card border-none bg-surface px-2 py-5 text-center shadow-none">
-          <Calendar className="mx-auto text-[#6B7280]" size={18} strokeWidth={2} />
-          <p className="text-2xl font-bold text-ink">{todayShifts.length}</p>
-          <p className="text-xs text-[#6B7280]">Shifts today</p>
+        <Card className="gap-2 rounded-card border-none bg-surface p-5 text-center shadow-none">
+          <Calendar className="mx-auto text-[#9CA3AF]" size={20} strokeWidth={2} />
+          <p className="text-3xl font-bold text-ink">{todayShifts.length}</p>
+          <p className="text-xs tracking-wide text-[#9CA3AF] uppercase">Shifts today</p>
         </Card>
 
-        <Card className="gap-2 rounded-card border-none bg-surface px-2 py-5 text-center shadow-none">
-          <Users className="mx-auto text-[#6B7280]" size={18} strokeWidth={2} />
-          <p className="text-2xl font-bold text-ink">{uniqueNursesToday}</p>
-          <p className="text-xs text-[#6B7280]">Nurses scheduled</p>
+        <Card className="gap-2 rounded-card border-none bg-surface p-5 text-center shadow-none">
+          <Users className="mx-auto text-[#9CA3AF]" size={20} strokeWidth={2} />
+          <p className="text-3xl font-bold text-ink">{uniqueNursesToday}</p>
+          <p className="text-xs tracking-wide text-[#9CA3AF] uppercase">Nurses scheduled</p>
         </Card>
 
         <Card
           className={cn(
-            'gap-2 rounded-card border-none px-2 py-5 text-center shadow-none',
+            'gap-2 rounded-card border-none p-5 text-center shadow-none',
             hasUnstaffed ? 'bg-[#FEF9C3]' : 'bg-surface',
           )}
         >
           <AlertTriangle
-            className={cn('mx-auto', hasUnstaffed ? 'text-[#CA8A04]' : 'text-[#6B7280]')}
-            size={18}
+            className={cn('mx-auto', hasUnstaffed ? 'text-[#CA8A04]' : 'text-[#9CA3AF]')}
+            size={20}
             strokeWidth={2}
           />
-          <p className={cn('text-2xl font-bold', hasUnstaffed ? 'text-[#92400E]' : 'text-ink')}>
+          <p className={cn('text-3xl font-bold', hasUnstaffed ? 'text-[#92400E]' : 'text-ink')}>
             {unstaffedDates.length}
           </p>
-          <p className={cn('text-xs', hasUnstaffed ? 'text-[#A16207]' : 'text-[#6B7280]')}>
+          <p
+            className={cn(
+              'text-xs tracking-wide uppercase',
+              hasUnstaffed ? 'text-[#A16207]' : 'text-[#9CA3AF]',
+            )}
+          >
             Unstaffed days
           </p>
         </Card>
@@ -300,16 +304,30 @@ function CoordinatorSummary({ shifts, today, onGoToManage }) {
 
       {hasUnstaffed && (
         <div className="mt-7">
-          <h2 className="mb-3 text-xs font-semibold tracking-wide text-[#9CA3AF] uppercase">
-            Unstaffed days (next 7 days)
+          <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-ink">
+            <AlertTriangle className="text-[#D97706]" size={16} strokeWidth={2.5} />
+            Coverage gaps
           </h2>
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-3">
             {unstaffedDates.map((date) => (
-              <li
-                key={formatLocalDateKey(date)}
-                className="rounded-card border border-line bg-surface px-4 py-3 text-[15px] text-ink"
-              >
-                {formatDayLabel(date)}
+              <li key={formatLocalDateKey(date)}>
+                <div className="flex items-center gap-4 rounded-card bg-white p-4 shadow-sm">
+                  <div className="flex w-12 shrink-0 flex-col items-center justify-center gap-0.5 text-center">
+                    <span className="text-xs font-medium tracking-wide text-[#9CA3AF] uppercase">
+                      {weekdayFormatter.format(date)}
+                    </span>
+                    <span className="text-2xl font-bold text-ink">{date.getDate()}</span>
+                    <span className="text-xs font-medium tracking-wide text-[#9CA3AF] uppercase">
+                      {monthFormatter.format(date)}
+                    </span>
+                  </div>
+
+                  <div className="h-12 w-px shrink-0 bg-line" />
+
+                  <p className="min-w-0 flex-1 text-sm text-[#6B7280]">No shifts scheduled</p>
+
+                  <AlertTriangle className="shrink-0 text-[#D97706]" size={14} strokeWidth={2.5} />
+                </div>
               </li>
             ))}
           </ul>
