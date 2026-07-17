@@ -231,17 +231,35 @@ function NurseSummary({
               isWorkingToday ? 'font-medium text-ink' : 'text-[#6B7280]',
             )}
           >
-            {isWorkingToday ? "You're working today" : 'You have the day off'}
+            {isWorkingToday ? "You're working today." : 'You have the day off.'}
           </p>
         </div>
 
         {isWorkingToday && (
-          <div className="mt-1.5 flex flex-col gap-0.5 pl-[26px]">
-            {todayShifts.map((shift) => (
-              <p key={shift.id} className="text-sm text-[#6B7280]">
-                {shift.unit} · {formatShiftTimeRange(shift.starts_at, shift.ends_at)}
-              </p>
-            ))}
+          <div className="mt-2 flex flex-col gap-3 pl-[26px]">
+            {todayShifts.map((shift) => {
+              const [startTime, endTime] = formatShiftTimeRange(
+                shift.starts_at,
+                shift.ends_at,
+              ).split(' – ')
+              const [startDigits, startMeridiem] = startTime.split(' ')
+              const [endDigits, endMeridiem] = endTime.split(' ')
+
+              return (
+                <div key={shift.id}>
+                  <p>
+                    <span className="text-3xl font-medium text-ink">{startDigits}</span>
+                    <span className="text-base font-medium text-ink"> {startMeridiem}</span>
+                    <span className="text-3xl font-medium text-ink"> – {endDigits}</span>
+                    <span className="text-base font-medium text-ink"> {endMeridiem}</span>
+                  </p>
+                  <p className="text-sm text-[#6B7280]">
+                    {shift.unit}
+                    {credential && ` | ${credential}`}
+                  </p>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
@@ -258,7 +276,9 @@ function NurseSummary({
         </div>
       )}
 
-      <section>
+      <div className="border-b border-[#E8E6E3] pb-4" />
+
+      <section className="pt-4">
         <h2 className="mb-4 text-lg font-semibold text-ink">Upcoming shifts</h2>
 
         {upcomingShifts.length === 0 ? (
