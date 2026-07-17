@@ -28,6 +28,12 @@ function getInitials(fullName) {
   return initials.toUpperCase()
 }
 
+function formatTimeAgo(claimedAt) {
+  const diffMins = Math.max(0, Math.round((Date.now() - new Date(claimedAt).getTime()) / 60000))
+  if (diffMins < 60) return `${diffMins} mins ago`
+  return `${Math.round(diffMins / 60)} hrs ago`
+}
+
 function groupByTimeSlot(dayShifts) {
   const groups = new Map()
 
@@ -119,7 +125,7 @@ function MyShiftsTab({ user }) {
       const { data, error: fetchError } = await supabase
         .from('shifts')
         .select('id, unit, starts_at, ends_at, status')
-        .or(`nurse_id.eq.${user.id},claimed_by.eq.${user.id}`)
+        .eq('nurse_id', user.id)
         .gte('starts_at', start.toISOString())
         .lt('starts_at', end.toISOString())
         .order('starts_at', { ascending: true })
@@ -205,12 +211,13 @@ function MyShiftsTab({ user }) {
 
 function OpenShiftsTab({ user }) {
   const [shifts, setShifts] = useState([])
+  const [claims, setClaims] = useState([])
   const [homeUnit, setHomeUnit] = useState(undefined)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [claimingId, setClaimingId] = useState(null)
-  const [takenId, setTakenId] = useState(null)
-  const [successMessage, setSuccessMessage] = useState(null)
+  const [withdrawingId, setWithdrawingId] = useState(null)
+  const [unavailableId, setUnavailableId] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -231,6 +238,7 @@ function OpenShiftsTab({ user }) {
         setError(profileError.message)
         setHomeUnit(null)
         setShifts([])
+        setClaims([])
         setLoading(false)
         return
       }
@@ -240,11 +248,12 @@ function OpenShiftsTab({ user }) {
 
       if (!unit) {
         setShifts([])
+        setClaims([])
         setLoading(false)
         return
       }
 
-      const { data, error: fetchError } = await supabase
+      const { data: shiftsData, error: shiftsError } = await supabase
         .from('shifts')
         .select('id, unit, starts_at, ends_at, status')
         .eq('status', 'open')
@@ -253,13 +262,41 @@ function OpenShiftsTab({ user }) {
 
       if (cancelled) return
 
-      if (fetchError) {
-        setError(fetchError.message)
+      if (shiftsError) {
+        setError(shiftsError.message)
         setShifts([])
-      } else {
-        setShifts(data ?? [])
+        setClaims([])
+        setLoading(false)
+        return
       }
 
+      const shiftIds = (shiftsData ?? []).map((s) => s.id)
+
+      if (shiftIds.length === 0) {
+        setShifts([])
+        setClaims([])
+        setLoading(false)
+        return
+      }
+
+      const { data: claimsData, error: claimsError } = await supabase
+        .from('shift_claims')
+        .select('id, shift_id, nurse_id, status')
+        .in('shift_id', shiftIds)
+        .eq('status', 'pending')
+
+      if (cancelled) return
+
+      if (claimsError) {
+        setError(claimsError.message)
+        setShifts([])
+        setClaims([])
+        setLoading(false)
+        return
+      }
+
+      setShifts(shiftsData ?? [])
+      setClaims(claimsData ?? [])
       setLoading(false)
     }
 
@@ -268,37 +305,60 @@ function OpenShiftsTab({ user }) {
   }, [user.id])
 
   async function handleClaim(shift) {
-    setTakenId(null)
-    setSuccessMessage(null)
+    setUnavailableId(null)
     setClaimingId(shift.id)
 
-    // Optimistic UI: show this shift as pending immediately
-    setShifts((current) =>
-      current.map((s) => (s.id === shift.id ? { ...s, status: 'pending' } : s)),
-    )
+    // Optimistic UI: show this shift as requested immediately
+    const tempId = `temp-${shift.id}`
+    setClaims((current) => [
+      ...current,
+      { id: tempId, shift_id: shift.id, nurse_id: user.id, status: 'pending' },
+    ])
 
     const { data, error: claimError } = await supabase
-      .from('shifts')
-      .update({ status: 'pending', claimed_by: user.id, claimed_at: new Date().toISOString() })
-      .eq('id', shift.id)
-      .eq('status', 'open')
-      .select()
+      .from('shift_claims')
+      .insert({
+        shift_id: shift.id,
+        nurse_id: user.id,
+        status: 'pending',
+        claimed_at: new Date().toISOString(),
+      })
+      .select('id, shift_id, nurse_id, status')
+      .single()
 
     setClaimingId(null)
 
-    if (claimError || !data || data.length === 0) {
-      // Race lost (someone else claimed it first) - roll back and tell the nurse
-      setShifts((current) =>
-        current.map((s) => (s.id === shift.id ? { ...s, status: 'open' } : s)),
-      )
-      setTakenId(shift.id)
+    if (claimError || !data) {
+      // Shift is no longer open (or some other race) - roll back and tell the nurse
+      setClaims((current) => current.filter((c) => c.id !== tempId))
+      setUnavailableId(shift.id)
       return
     }
 
-    // Claim succeeded - it's no longer open, so drop it from this list.
-    // It now shows up as Pending in My Shifts.
-    setShifts((current) => current.filter((s) => s.id !== shift.id))
-    setSuccessMessage(`Requested ${shift.unit} shift - check My Shifts for status.`)
+    setClaims((current) => current.map((c) => (c.id === tempId ? data : c)))
+  }
+
+  async function handleWithdraw(shift) {
+    const existingClaim = claims.find((c) => c.shift_id === shift.id && c.nurse_id === user.id)
+    if (!existingClaim) return
+
+    setWithdrawingId(shift.id)
+
+    // Optimistic UI: remove the claim immediately
+    setClaims((current) => current.filter((c) => c.id !== existingClaim.id))
+
+    const { error: deleteError } = await supabase
+      .from('shift_claims')
+      .delete()
+      .eq('nurse_id', user.id)
+      .eq('shift_id', shift.id)
+
+    setWithdrawingId(null)
+
+    if (deleteError) {
+      // Roll back - keep the claim shown
+      setClaims((current) => [...current, existingClaim])
+    }
   }
 
   if (loading) return <p className="text-sm text-[#6B7280]">Loading open shifts…</p>
@@ -313,36 +373,46 @@ function OpenShiftsTab({ user }) {
 
   return (
     <>
-      {successMessage && <p className="mb-4 text-sm text-[#16A34A]">{successMessage}</p>}
-
       {shifts.length === 0 ? (
         <p className="text-sm text-[#6B7280]">No open shifts right now</p>
       ) : (
         <ul className="flex flex-col gap-3">
           {shifts.map((shift) => {
-            const isPending = shift.status === 'pending'
+            const myClaim = claims.find((c) => c.shift_id === shift.id && c.nurse_id === user.id)
+            const claimCount = claims.filter((c) => c.shift_id === shift.id).length
             const isClaiming = claimingId === shift.id
+            const isWithdrawing = withdrawingId === shift.id
 
             return (
               <li key={shift.id}>
                 <ShiftCard
                   date={new Date(shift.starts_at)}
                   title={formatShiftTimeRange(shift.starts_at, shift.ends_at)}
-                  pill={<StatusPill status={shift.status} label={isPending ? 'Pending approval' : undefined} />}
+                  pill={<StatusPill status="open" />}
                   subtitle={
                     <div className="mt-1">
                       <p className="truncate text-xs text-[#9CA3AF]">{shift.unit}</p>
                     </div>
                   }
                   trailing={
-                    isPending ? (
-                      <span className="text-xs font-medium text-[#9CA3AF]">Requested</span>
+                    myClaim ? (
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="text-sm text-[#6B7280]">Requested</span>
+                        <button
+                          type="button"
+                          onClick={() => handleWithdraw(shift)}
+                          disabled={isWithdrawing}
+                          className="rounded-full border border-[#E8E6E3] px-4 py-1.5 text-sm text-[#111111] disabled:opacity-60"
+                        >
+                          {isWithdrawing ? 'Withdrawing…' : 'Withdraw'}
+                        </button>
+                      </div>
                     ) : (
                       <Button
                         type="button"
                         onClick={() => handleClaim(shift)}
                         disabled={isClaiming}
-                        className="h-auto rounded-full bg-[#111111] px-4 py-1.5 text-xs font-medium text-white hover:bg-[#111111]/90 disabled:opacity-60"
+                        className="h-auto rounded-full bg-[#111111] px-4 py-1.5 text-sm font-medium text-white hover:bg-[#111111]/90 disabled:opacity-60"
                       >
                         {isClaiming ? 'Requesting…' : 'Claim'}
                       </Button>
@@ -350,8 +420,16 @@ function OpenShiftsTab({ user }) {
                   }
                 />
 
-                {takenId === shift.id && (
-                  <p className="mt-1.5 pl-1 text-xs text-red-700">This shift was just taken.</p>
+                {claimCount > 0 && (
+                  <p className="mt-1.5 pl-1 text-xs text-[#9CA3AF]">
+                    {claimCount} nurse{claimCount === 1 ? '' : 's'} requested
+                  </p>
+                )}
+
+                {unavailableId === shift.id && (
+                  <p className="mt-1.5 pl-1 text-xs text-red-700">
+                    This shift is no longer available.
+                  </p>
                 )}
               </li>
             )
@@ -379,8 +457,7 @@ function TeamScheduleTab() {
         .from('shifts')
         .select(`
           id, unit, starts_at, ends_at, status, nurse_id,
-          profiles!nurse_id ( full_name, credential ),
-          claimant:profiles!claimed_by ( full_name, credential )
+          profiles!nurse_id ( full_name, credential )
         `)
         .gte('starts_at', start.toISOString())
         .lt('starts_at', end.toISOString())
@@ -528,11 +605,11 @@ function ManageTab() {
     night:   { start: 23, end: 7  },
   }
 
-  const [pendingClaims, setPendingClaims] = useState([])
+  const [claimGroups, setClaimGroups] = useState([])
   const [pendingLoading, setPendingLoading] = useState(true)
   const [pendingError, setPendingError] = useState(null)
   const [actionError, setActionError] = useState(null)
-  const [actioningId, setActioningId] = useState(null)
+  const [actioningShiftId, setActioningShiftId] = useState(null)
 
   const [recentShifts, setRecentShifts] = useState([])
   const [recentLoading, setRecentLoading] = useState(true)
@@ -576,21 +653,38 @@ function ManageTab() {
     setPendingError(null)
 
     const { data, error: fetchError } = await supabase
-      .from('shifts')
+      .from('shift_claims')
       .select(`
-        id, unit, starts_at, ends_at, claimed_by, claimed_at,
-        claimant:profiles!claimed_by ( full_name, credential )
+        id, shift_id, nurse_id, claimed_at, status,
+        profiles!nurse_id ( full_name, credential ),
+        shifts!shift_id ( id, unit, starts_at, ends_at, status )
       `)
       .eq('status', 'pending')
-      .order('claimed_at', { ascending: true })
+      .order('claimed_at', { ascending: false })
 
     if (fetchError) {
       setPendingError(fetchError.message)
-      setPendingClaims([])
-    } else {
-      setPendingClaims(data ?? [])
+      setClaimGroups([])
+      setPendingLoading(false)
+      return
     }
 
+    const groups = new Map()
+    for (const claim of data ?? []) {
+      const shift = claim.shifts
+      if (!shift || (shift.status !== 'open' && shift.status !== 'pending')) continue
+
+      if (!groups.has(claim.shift_id)) {
+        groups.set(claim.shift_id, { shift, claims: [] })
+      }
+      groups.get(claim.shift_id).claims.push(claim)
+    }
+
+    const groupList = Array.from(groups.values()).sort(
+      (a, b) => new Date(a.shift.starts_at) - new Date(b.shift.starts_at),
+    )
+
+    setClaimGroups(groupList)
     setPendingLoading(false)
   }
 
@@ -777,34 +871,66 @@ function ManageTab() {
     }
   }
 
-  async function handleApprove(claim) {
+  async function handleApprove(group, claim) {
     setActionError(null)
-    setActioningId(claim.id)
+    setActioningShiftId(group.shift.id)
 
-    const { error: updateError } = await supabase
+    const { error: shiftError } = await supabase
       .from('shifts')
-      .update({
-        nurse_id: claim.claimed_by,
-        status: 'scheduled',
-        claimed_by: null,
-        claimed_at: null,
-      })
-      .eq('id', claim.id)
+      .update({ status: 'scheduled', nurse_id: claim.nurse_id })
+      .eq('id', group.shift.id)
 
-    if (updateError) {
-      setActioningId(null)
-      setActionError(updateError.message)
+    if (shiftError) {
+      setActioningShiftId(null)
+      setActionError(shiftError.message)
       return
     }
 
-    const { error: notifyError } = await supabase.from('notifications').insert({
-      user_id: claim.claimed_by,
-      type: 'claim_approved',
-      message: `Your claim for ${claim.unit} · ${formatShiftDate(claim.starts_at)} · ${formatShiftTimeRange(claim.starts_at, claim.ends_at)} was approved. You're on the schedule.`,
-      shift_id: claim.id,
-    })
+    const { error: approveError } = await supabase
+      .from('shift_claims')
+      .update({ status: 'approved' })
+      .eq('id', claim.id)
 
-    setActioningId(null)
+    if (approveError) {
+      setActioningShiftId(null)
+      setActionError(approveError.message)
+      return
+    }
+
+    const otherClaims = group.claims.filter((c) => c.id !== claim.id)
+
+    if (otherClaims.length > 0) {
+      const { error: denyOthersError } = await supabase
+        .from('shift_claims')
+        .update({
+          status: 'denied',
+          denial_message: 'Sorry, this shift has been filled by another team member.',
+        })
+        .in('id', otherClaims.map((c) => c.id))
+
+      if (denyOthersError) {
+        setActionError(denyOthersError.message)
+      }
+    }
+
+    const shiftDetails = `${group.shift.unit} · ${formatShiftDate(group.shift.starts_at)} · ${formatShiftTimeRange(group.shift.starts_at, group.shift.ends_at)}`
+
+    const { error: notifyError } = await supabase.from('notifications').insert([
+      {
+        user_id: claim.nurse_id,
+        type: 'claim_approved',
+        message: `Your claim for ${shiftDetails} was approved. You're on the schedule.`,
+        shift_id: group.shift.id,
+      },
+      ...otherClaims.map((c) => ({
+        user_id: c.nurse_id,
+        type: 'claim_denied',
+        message: 'Sorry, this shift has been filled by another team member.',
+        shift_id: group.shift.id,
+      })),
+    ])
+
+    setActioningShiftId(null)
 
     if (notifyError) {
       setActionError(notifyError.message)
@@ -813,29 +939,34 @@ function ManageTab() {
     fetchPendingClaims()
   }
 
-  async function handleDeny(claim) {
+  async function handleDeny(group, claim) {
     setActionError(null)
-    setActioningId(claim.id)
+    setActioningShiftId(group.shift.id)
 
-    const { error: updateError } = await supabase
-      .from('shifts')
-      .update({ status: 'open', claimed_by: null, claimed_at: null })
+    const { error: denyError } = await supabase
+      .from('shift_claims')
+      .update({
+        status: 'denied',
+        denial_message: 'Your claim was not approved. The shift is open again.',
+      })
       .eq('id', claim.id)
 
-    if (updateError) {
-      setActioningId(null)
-      setActionError(updateError.message)
+    if (denyError) {
+      setActioningShiftId(null)
+      setActionError(denyError.message)
       return
     }
 
+    const shiftDetails = `${group.shift.unit} · ${formatShiftDate(group.shift.starts_at)} · ${formatShiftTimeRange(group.shift.starts_at, group.shift.ends_at)}`
+
     const { error: notifyError } = await supabase.from('notifications').insert({
-      user_id: claim.claimed_by,
+      user_id: claim.nurse_id,
       type: 'claim_denied',
-      message: `Your claim for ${claim.unit} · ${formatShiftDate(claim.starts_at)} · ${formatShiftTimeRange(claim.starts_at, claim.ends_at)} was not approved. The shift is open again.`,
-      shift_id: claim.id,
+      message: `Your claim for ${shiftDetails} was not approved. The shift is open again.`,
+      shift_id: group.shift.id,
     })
 
-    setActioningId(null)
+    setActioningShiftId(null)
 
     if (notifyError) {
       setActionError(notifyError.message)
@@ -1206,44 +1337,95 @@ function ManageTab() {
         )}
         {actionError && <p className="mb-3 text-sm text-red-700">{actionError}</p>}
 
-        {!pendingLoading && !pendingError && pendingClaims.length === 0 && (
+        {!pendingLoading && !pendingError && claimGroups.length === 0 && (
           <p className="text-sm text-[#6B7280]">No pending claims.</p>
         )}
 
-        {!pendingLoading && pendingClaims.length > 0 && (
+        {!pendingLoading && claimGroups.length > 0 && (
           <ul className="flex flex-col gap-3">
-            {pendingClaims.map((claim) => (
-              <li key={claim.id}>
-                <div className="rounded-xl bg-white p-4 shadow-sm border border-[#E8E6E3]">
-                  <p className="text-sm font-semibold text-[#111111]">
-                    {claim.claimant?.full_name ?? 'Unknown'}
-                    {claim.claimant?.credential ? ` (${claim.claimant.credential})` : ''}
-                  </p>
-                  <p className="mt-1 text-sm text-[#6B7280]">
-                    {claim.unit} · {formatShiftDate(claim.starts_at)} ·{' '}
-                    {formatShiftTimeRange(claim.starts_at, claim.ends_at)}
-                  </p>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleApprove(claim)}
-                      disabled={actioningId === claim.id}
-                      className="rounded-full bg-[#111111] px-4 py-1.5 text-sm font-medium text-white disabled:opacity-60"
-                    >
-                      {actioningId === claim.id ? 'Approving…' : 'Approve'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeny(claim)}
-                      disabled={actioningId === claim.id}
-                      className="rounded-full border border-[#E8E6E3] px-4 py-1.5 text-sm font-medium text-[#111111] disabled:opacity-60"
-                    >
-                      {actioningId === claim.id ? 'Denying…' : 'Deny'}
-                    </button>
+            {claimGroups.map((group) => {
+              const period = getShiftPeriod(group.shift.starts_at)
+              const isActioning = actioningShiftId === group.shift.id
+
+              return (
+                <li
+                  key={group.shift.id}
+                  className="rounded-xl bg-white p-4 shadow-sm border border-[#E8E6E3]"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold text-[#111111]">
+                      {formatShiftTimeRange(group.shift.starts_at, group.shift.ends_at)}
+                    </p>
+                    <ShiftPeriodPill period={period} />
                   </div>
-                </div>
-              </li>
-            ))}
+                  <div className="mt-0.5 flex items-center gap-1.5">
+                    <p className="text-xs text-[#9CA3AF]">{group.shift.unit}</p>
+                    <span className="h-3 border-l border-[#E8E6E3]" />
+                    <p className="text-xs text-[#9CA3AF]">
+                      {formatShiftDate(group.shift.starts_at)}
+                    </p>
+                  </div>
+
+                  <div className="mt-3 border-b border-[#E8E6E3]" />
+
+                  <ul className="flex flex-col">
+                    {group.claims.map((claim, index) => (
+                      <li
+                        key={claim.id}
+                        className="flex items-center gap-3 border-b border-[#E8E6E3] py-3 last:border-b-0"
+                      >
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#F8F7F5] text-xs font-semibold text-[#6B7280]">
+                          {getInitials(claim.profiles?.full_name)}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            {index === 0 && (
+                              <span className="rounded-full bg-[#111111] px-2 py-0.5 text-xs text-white">
+                                RECENT
+                              </span>
+                            )}
+                            <p className="truncate text-sm font-medium text-[#111111]">
+                              {claim.profiles?.full_name ?? 'Unknown'}
+                            </p>
+                            {claim.profiles?.credential && (
+                              <>
+                                <span className="h-3 border-l border-[#E8E6E3]" />
+                                <p className="text-xs text-[#9CA3AF]">
+                                  {claim.profiles.credential}
+                                </p>
+                              </>
+                            )}
+                          </div>
+                          <p className="mt-0.5 text-xs text-[#9CA3AF]">
+                            {formatTimeAgo(claim.claimed_at)}
+                          </p>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleApprove(group, claim)}
+                            disabled={isActioning}
+                            className="rounded-full bg-[#111111] px-3 py-1 text-xs font-medium text-white disabled:opacity-60"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeny(group, claim)}
+                            disabled={isActioning}
+                            className="rounded-full border border-[#E8E6E3] px-3 py-1 text-xs font-medium text-[#111111] disabled:opacity-60"
+                          >
+                            Deny
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>
