@@ -322,29 +322,24 @@ BottomNav:
 
 ## Current Task
 
-Adding home_unit field to profiles table so open shifts can be
-filtered by the nurse's unit.
-
-Migration needed (run in Supabase SQL editor):
-  ALTER TABLE profiles ADD COLUMN home_unit text;
-
-After migration:
-1. Update RLS on shifts SELECT policy so nurses can see open shifts
-   on their home_unit even without an overlapping shift
-2. Update OpenShiftsTab in Schedule.jsx to filter open shifts by
-   the nurse's home_unit
-3. Add a way for coordinator to set home_unit per nurse (in Manage
-   tab or a new admin section)
+Branding pass. Nothing in the app currently says "Relay" —
+add the name/logo throughout before showing it to anyone at
+the facility.
 
 ---
 
 ## Known Gaps (fix in this order)
 
-1. Open shifts unit filter — IN PROGRESS (current task)
-2. Denied nurse notification — nurse gets no feedback when claim
-   is denied, shift just disappears from their view
-3. Nothing in the app says "Relay" — branding pass needed before
-   showing to anyone at the facility
+1. Branding — IN PROGRESS (current task). Nothing in the app says
+   "Relay" — branding pass needed before showing to anyone at the
+   facility.
+
+Done:
+  - Open shifts unit filter (home_unit on profiles, RLS updated,
+    OpenShiftsTab filters by home_unit, Staff tab lets coordinator
+    set it)
+  - Denied nurse notification (notifications table, in-app
+    notification system for claim approvals and denials)
 
 ---
 

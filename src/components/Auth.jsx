@@ -63,6 +63,7 @@ export default function Auth() {
 
   return (
     <main className="mx-auto w-full max-w-md px-5 pt-6 pb-8">
+      <p className="mb-6 text-center text-2xl font-bold text-[#4F46E5]">Relay</p>
       <h1 className="mb-2 text-2xl font-semibold">Sign in</h1>
       <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
         <Label htmlFor="email">Email</Label>
@@ -114,7 +115,7 @@ export default function Auth() {
         type="button"
         variant="outline"
         onClick={toggleMode}
-        className="mt-3 h-auto border-gray-300 bg-white px-5 py-3 text-base font-semibold text-[#111] shadow-none hover:bg-white hover:text-[#111]"
+        className="mt-3 h-auto w-full border-gray-300 bg-white px-5 py-3 text-base font-semibold text-[#111] shadow-none hover:bg-white hover:text-[#111]"
       >
         {mode === 'password' ? 'Sign in with magic link' : 'Sign in with password'}
       </Button>

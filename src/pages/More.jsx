@@ -12,6 +12,8 @@ export default function More() {
 
   return (
     <main className="mx-auto w-full max-w-md px-5 pt-10 pb-12">
+      <p className="text-center text-2xl font-bold text-[#4F46E5]">Relay</p>
+      <p className="mb-8 text-center text-xs text-muted">Beta</p>
       <h1 className="mb-8 text-2xl font-semibold text-ink">More</h1>
 
       <Button
