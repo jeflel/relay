@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Calendar, Users, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { Calendar, Users, AlertTriangle, CheckCircle2, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import ShiftDetail from './ShiftDetail'
 import { ShiftPeriodPill } from '@/components/ui/pill'
@@ -37,6 +37,7 @@ export default function Home({ user, role, onGoToManage }) {
   const [fullName, setFullName] = useState(null)
   const [credential, setCredential] = useState(null)
   const [shifts, setShifts] = useState([])
+  const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selectedShift, setSelectedShift] = useState(null)
@@ -66,9 +67,19 @@ export default function Home({ user, role, onGoToManage }) {
             .eq('nurse_id', user.id)
             .order('starts_at', { ascending: true })
 
-      const [profileResult, shiftsResult] = await Promise.all([
+      const notificationsQuery = isCoordinator
+        ? Promise.resolve({ data: [], error: null })
+        : supabase
+            .from('notifications')
+            .select('id, type, message, shift_id, created_at')
+            .eq('user_id', user.id)
+            .eq('read', false)
+            .order('created_at', { ascending: false })
+
+      const [profileResult, shiftsResult, notificationsResult] = await Promise.all([
         supabase.from('profiles').select('full_name, credential').eq('id', user.id).maybeSingle(),
         shiftsQuery,
+        notificationsQuery,
       ])
 
       if (cancelled) return
@@ -78,6 +89,7 @@ export default function Home({ user, role, onGoToManage }) {
         setFullName(null)
         setCredential(null)
         setShifts([])
+        setNotifications([])
         setLoading(false)
         return
       }
@@ -87,6 +99,7 @@ export default function Home({ user, role, onGoToManage }) {
         setFullName(profileResult.data?.full_name ?? null)
         setCredential(profileResult.data?.credential ?? null)
         setShifts([])
+        setNotifications([])
         setLoading(false)
         return
       }
@@ -94,6 +107,7 @@ export default function Home({ user, role, onGoToManage }) {
       setFullName(profileResult.data?.full_name ?? null)
       setCredential(profileResult.data?.credential ?? null)
       setShifts(shiftsResult.data ?? [])
+      setNotifications(notificationsResult.error ? [] : (notificationsResult.data ?? []))
       setLoading(false)
     }
 
@@ -103,6 +117,11 @@ export default function Home({ user, role, onGoToManage }) {
       cancelled = true
     }
   }, [user.id, isCoordinator])
+
+  async function handleDismissNotification(id) {
+    setNotifications((current) => current.filter((n) => n.id !== id))
+    await supabase.from('notifications').update({ read: true }).eq('id', id)
+  }
 
   if (selectedShift) {
     return (
@@ -144,6 +163,8 @@ export default function Home({ user, role, onGoToManage }) {
               today={today}
               credential={credential}
               onSelectShift={setSelectedShift}
+              notifications={notifications}
+              onDismissNotification={handleDismissNotification}
             />
           )}
         </div>
@@ -152,7 +173,47 @@ export default function Home({ user, role, onGoToManage }) {
   )
 }
 
-function NurseSummary({ shifts, today, credential, onSelectShift }) {
+function NotificationBanner({ notification, onDismiss }) {
+  const isApproved = notification.type === 'claim_approved'
+
+  return (
+    <div
+      className={cn(
+        'relative rounded-xl border-l-4 p-4',
+        isApproved ? 'border-green-500 bg-green-50' : 'border-amber-500 bg-amber-50',
+      )}
+    >
+      <div className="flex items-start gap-2 pr-6">
+        {isApproved ? (
+          <CheckCircle2 className="mt-0.5 shrink-0 text-[#16A34A]" size={16} strokeWidth={2} />
+        ) : (
+          <AlertTriangle className="mt-0.5 shrink-0 text-[#D97706]" size={16} strokeWidth={2} />
+        )}
+        <p className={cn('text-sm', isApproved ? 'text-[#166534]' : 'text-[#92400E]')}>
+          {notification.message}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onDismiss(notification.id)}
+        aria-label="Dismiss notification"
+        className={cn('absolute top-3 right-3', isApproved ? 'text-[#16A34A]' : 'text-[#D97706]')}
+      >
+        <X size={14} strokeWidth={2} />
+      </button>
+    </div>
+  )
+}
+
+function NurseSummary({
+  shifts,
+  today,
+  credential,
+  onSelectShift,
+  notifications,
+  onDismissNotification,
+}) {
   const todayShifts = shifts.filter((shift) => isSameLocalDay(new Date(shift.starts_at), today))
   const upcomingShifts = shifts.filter((shift) => isWithinNextSevenDays(shift.starts_at))
   const isWorkingToday = todayShifts.length > 0
@@ -184,6 +245,18 @@ function NurseSummary({ shifts, today, credential, onSelectShift }) {
           </div>
         )}
       </div>
+
+      {notifications.length > 0 && (
+        <div className="mb-9 flex flex-col gap-2">
+          {notifications.map((notification) => (
+            <NotificationBanner
+              key={notification.id}
+              notification={notification}
+              onDismiss={onDismissNotification}
+            />
+          ))}
+        </div>
+      )}
 
       <section>
         <h2 className="mb-4 text-lg font-semibold text-ink">Upcoming shifts</h2>

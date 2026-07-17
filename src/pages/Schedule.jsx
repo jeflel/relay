@@ -791,11 +791,23 @@ function ManageTab() {
       })
       .eq('id', claim.id)
 
-    setActioningId(null)
-
     if (updateError) {
+      setActioningId(null)
       setActionError(updateError.message)
       return
+    }
+
+    const { error: notifyError } = await supabase.from('notifications').insert({
+      user_id: claim.claimed_by,
+      type: 'claim_approved',
+      message: `Your claim for ${claim.unit} · ${formatShiftDate(claim.starts_at)} · ${formatShiftTimeRange(claim.starts_at, claim.ends_at)} was approved. You're on the schedule.`,
+      shift_id: claim.id,
+    })
+
+    setActioningId(null)
+
+    if (notifyError) {
+      setActionError(notifyError.message)
     }
 
     fetchPendingClaims()
@@ -810,11 +822,23 @@ function ManageTab() {
       .update({ status: 'open', claimed_by: null, claimed_at: null })
       .eq('id', claim.id)
 
-    setActioningId(null)
-
     if (updateError) {
+      setActioningId(null)
       setActionError(updateError.message)
       return
+    }
+
+    const { error: notifyError } = await supabase.from('notifications').insert({
+      user_id: claim.claimed_by,
+      type: 'claim_denied',
+      message: `Your claim for ${claim.unit} · ${formatShiftDate(claim.starts_at)} · ${formatShiftTimeRange(claim.starts_at, claim.ends_at)} was not approved. The shift is open again.`,
+      shift_id: claim.id,
+    })
+
+    setActioningId(null)
+
+    if (notifyError) {
+      setActionError(notifyError.message)
     }
 
     fetchPendingClaims()
