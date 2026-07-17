@@ -37,14 +37,16 @@ nurses, facility pays.
 src/
   App.jsx              — auth, session, role fetching, tab routing
   main.jsx             — imports both index.css and tailwind.css
-  index.css            — legacy CSS (being phased out, do not add new
-                         classes here)
-  tailwind.css         — Tailwind v4 config + shadcn CSS variables +
-                         custom tokens
+  index.css            — legacy CSS (being phased out, do not add
+                         new classes here)
+  tailwind.css         — Tailwind v4 config + shadcn CSS variables
+                         + custom tokens
   pages/
-    Home.jsx           — nurse and coordinator home screens (role-aware)
-    Schedule.jsx       — MyShiftsTab, OpenShiftsTab, TeamScheduleTab,
-                         ManageTab (all in one file)
+    Home.jsx           — nurse and coordinator home screens
+                         (role-aware), notification banners
+    Schedule.jsx       — MyShiftsTab, OpenShiftsTab,
+                         TeamScheduleTab, ManageTab, StaffTab
+                         (all in one file, role-aware tabs)
     ShiftDetail.jsx    — coworker view for a specific shift
     More.jsx           — sign out button
   components/
@@ -69,6 +71,8 @@ profiles table:
   full_name (text)
   role (user_role enum: 'nurse' | 'coordinator')
   credential (text) — e.g. 'RN', 'CNA', 'LVN'
+  home_unit (text) — e.g. 'Unit 1', 'Unit 2', 'Unit 3'
+  email (text) — editable by coordinator in Staff tab
 
 shifts table:
   id (uuid)
@@ -76,16 +80,38 @@ shifts table:
   unit (text) — 'Unit 1', 'Unit 2', etc.
   starts_at (timestamptz)
   ends_at (timestamptz)
-  status (shift_status enum: 'assigned' | 'open' | 'pending' |
-          'cancelled')
-  claimed_by (uuid, nullable FK to profiles.id)
-  claimed_at (timestamptz, nullable)
+  status (shift_status enum: 'scheduled' | 'open' | 'pending' |
+          'cancelled') — NOTE: DB uses 'scheduled' for filled
+          shifts, UI displays 'Assigned'. Do not rename without
+          a full migration. See Known Technical Debt.
+  notes (text, nullable)
+  created_at (timestamptz)
+  NOTE: claimed_by and claimed_at columns have been REMOVED.
+  Claims now live in shift_claims table.
+
+shift_claims table:
+  id (uuid)
+  shift_id (uuid FK to shifts.id ON DELETE CASCADE)
+  nurse_id (uuid FK to profiles.id ON DELETE CASCADE)
+  claimed_at (timestamptz, default now())
+  status (text: 'pending' | 'approved' | 'denied')
+  denial_message (text, nullable)
+  UNIQUE(shift_id, nurse_id) — one claim per nurse per shift
+
+notifications table:
+  id (uuid)
+  user_id (uuid FK to profiles.id ON DELETE CASCADE)
+  type (text: 'claim_denied' | 'claim_approved')
+  message (text)
+  shift_id (uuid FK to shifts.id ON DELETE SET NULL)
+  read (boolean, default false)
+  created_at (timestamptz)
 
 Seeded test accounts (all have password 'relay123'):
-  maria.santos@relay-test.com — RN, nurse
-  derek.okafor@relay-test.com — CNA, nurse
-  linda.tran@relay-test.com — LVN, nurse
-  james.reyes@relay-test.com — RN, nurse
+  maria.santos@relay-test.com — RN, nurse, home_unit: Unit 1
+  derek.okafor@relay-test.com — CNA, nurse, home_unit: Unit 1
+  linda.tran@relay-test.com — LVN, nurse, home_unit: Unit 2
+  james.reyes@relay-test.com — RN, nurse, home_unit: Unit 1
   jefleangelo@gmail.com — coordinator (real email, magic link works)
 
 ---
@@ -95,17 +121,27 @@ Seeded test accounts (all have password 'relay123'):
 is_coordinator() function: checks if auth.uid() matches a profile
 with role='coordinator'
 
-has_overlapping_shift() function: checks if current user has a shift
-on the same unit overlapping the queried shift
+has_overlapping_shift() function: checks if current user has a
+shift on the same unit overlapping the queried shift
 
-Nurses see: own shifts + overlapping same-unit coworker shifts
-Coordinators see: all shifts
+shifts table policies:
+  - nurses see own shifts: nurse_id = auth.uid() OR
+    is_coordinator() OR has_overlapping_shift()
+  - nurses see open shifts on their unit: status='open' AND
+    unit matches nurse's home_unit
+  - coordinators manage shifts: is_coordinator() (ALL)
 
-Nurses can UPDATE a shift only to claim it:
-  - Only when status='open'
-  - Only setting status='pending', claimed_by=auth.uid(),
-    claimed_at=now()
-  - Cannot set nurse_id or approve their own claim
+shift_claims table policies:
+  - nurses read claims on their unit: own claim OR shift unit
+    matches home_unit
+  - nurses insert own claims: nurse_id = auth.uid()
+  - nurses withdraw own claims: own claim AND status='pending'
+  - coordinators manage claims: is_coordinator() (ALL)
+
+notifications table policies:
+  - users read own notifications: user_id = auth.uid()
+  - users update own notifications: user_id = auth.uid()
+  - coordinators insert notifications: is_coordinator()
 
 Never modify RLS without explicit instruction.
 
@@ -143,11 +179,13 @@ Night: bg #2563EB text white (blue)
 Border radius: 999px, px-2.5 py-0.5, text-xs font-medium
 Icons: Sun (Day), Sunset (Evening), Moon (Night) from lucide-react
 
+Always import from '@/components/ui/pill' — never recreate inline.
+
 ### Status Pills (StatusPill component)
 
 Open: bg #D1FAE5 text #059669 (green)
 Pending: bg #FEF3C7 text #D97706 (amber)
-Assigned: bg #EDE9FE text #7C3AED (purple)
+Assigned/Scheduled: bg #EDE9FE text #7C3AED (purple)
 Cancelled: bg #F3F4F6 text #6B7280 (gray)
 Border radius: 999px, px-3 py-1, text-xs font-medium
 Icons: Circle (Open), Clock (Pending), CheckCircle2 (Assigned),
