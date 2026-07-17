@@ -201,7 +201,7 @@ function NurseSummary({ shifts, today, credential, onSelectShift }) {
                   <button
                     type="button"
                     onClick={() => onSelectShift(shift)}
-                    className="flex w-full items-center gap-4 rounded-card bg-white p-4 text-left shadow-sm transition-shadow active:shadow-none"
+                    className="flex w-full items-center gap-4 rounded-card bg-white p-4 text-left shadow-sm border border-[#E8E6E3] transition-shadow active:shadow-none"
                   >
                     <div className="flex w-12 shrink-0 flex-col items-center justify-center gap-0.5 text-center">
                       <span className="text-xs font-medium tracking-wide text-[#9CA3AF] uppercase">
@@ -311,7 +311,7 @@ function CoordinatorSummary({ shifts, today, onGoToManage }) {
           <ul className="flex flex-col gap-3">
             {unstaffedDates.map((date) => (
               <li key={formatLocalDateKey(date)}>
-                <div className="flex items-center gap-4 rounded-card bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-4 rounded-card bg-white p-4 shadow-sm border border-[#E8E6E3]">
                   <div className="flex w-12 shrink-0 flex-col items-center justify-center gap-0.5 text-center">
                     <span className="text-xs font-medium tracking-wide text-[#9CA3AF] uppercase">
                       {weekdayFormatter.format(date)}

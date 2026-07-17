@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Pencil, Trash2 } from 'lucide-react'
+import { AlertTriangle, Pencil, Trash2, Users } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { ShiftPeriodPill, StatusPill } from '@/components/ui/pill'
 import { Button } from '@/components/ui/button'
@@ -61,7 +61,7 @@ function ShiftCard({ date, title, subtitle, pill, belowPill, trailing, onClick }
       type={isInteractive ? 'button' : undefined}
       onClick={onClick}
       className={cn(
-        'flex w-full items-center rounded-xl bg-white p-4 shadow-sm',
+        'flex w-full items-center rounded-xl bg-white p-4 shadow-sm border border-[#E8E6E3]',
         isInteractive && 'text-left transition-shadow active:shadow-none',
       )}
     >
@@ -205,6 +205,7 @@ function MyShiftsTab({ user }) {
 
 function OpenShiftsTab({ user }) {
   const [shifts, setShifts] = useState([])
+  const [homeUnit, setHomeUnit] = useState(undefined)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [claimingId, setClaimingId] = useState(null)
@@ -218,10 +219,36 @@ function OpenShiftsTab({ user }) {
       setLoading(true)
       setError(null)
 
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('home_unit')
+        .eq('id', user.id)
+        .single()
+
+      if (cancelled) return
+
+      if (profileError) {
+        setError(profileError.message)
+        setHomeUnit(null)
+        setShifts([])
+        setLoading(false)
+        return
+      }
+
+      const unit = profile?.home_unit ?? null
+      setHomeUnit(unit)
+
+      if (!unit) {
+        setShifts([])
+        setLoading(false)
+        return
+      }
+
       const { data, error: fetchError } = await supabase
         .from('shifts')
         .select('id, unit, starts_at, ends_at, status')
         .eq('status', 'open')
+        .eq('unit', unit)
         .order('starts_at', { ascending: true })
 
       if (cancelled) return
@@ -238,7 +265,7 @@ function OpenShiftsTab({ user }) {
 
     fetchOpenShifts()
     return () => { cancelled = true }
-  }, [])
+  }, [user.id])
 
   async function handleClaim(shift) {
     setTakenId(null)
@@ -276,6 +303,13 @@ function OpenShiftsTab({ user }) {
 
   if (loading) return <p className="text-sm text-[#6B7280]">Loading open shifts…</p>
   if (error) return <p className="text-sm text-red-700">Could not load open shifts: {error}</p>
+  if (!homeUnit) {
+    return (
+      <p className="text-sm text-[#6B7280]">
+        Your home unit hasn&apos;t been set yet. Contact your coordinator.
+      </p>
+    )
+  }
 
   return (
     <>
@@ -399,7 +433,7 @@ function TeamScheduleTab() {
                 return (
                   <div
                     key={`${firstShift.starts_at}__${firstShift.ends_at}`}
-                    className="rounded-xl bg-white p-4 shadow-sm"
+                    className="rounded-xl bg-white p-4 shadow-sm border border-[#E8E6E3]"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-semibold text-[#111111]">
@@ -1009,7 +1043,7 @@ function ManageTab() {
                     {openShiftAction?.type === 'edit' &&
                       openShiftAction.shiftId === shift.id &&
                       editForm && (
-                        <div className="mt-2 flex flex-col gap-4 rounded-xl bg-white p-4 shadow-sm">
+                        <div className="mt-2 flex flex-col gap-4 rounded-xl bg-white p-4 shadow-sm border border-[#E8E6E3]">
                           <div className="flex flex-col gap-1.5">
                             <label className={labelClassName}>Nurse</label>
                             <select
@@ -1089,7 +1123,7 @@ function ManageTab() {
                       )}
 
                     {openShiftAction?.type === 'delete' && openShiftAction.shiftId === shift.id && (
-                      <div className="mt-2 flex flex-col gap-3 rounded-xl bg-white p-4 shadow-sm">
+                      <div className="mt-2 flex flex-col gap-3 rounded-xl bg-white p-4 shadow-sm border border-[#E8E6E3]">
                         <p className="text-sm font-medium text-[#111111]">Delete this shift?</p>
 
                         {shift.status === 'pending' && (
@@ -1156,7 +1190,7 @@ function ManageTab() {
           <ul className="flex flex-col gap-3">
             {pendingClaims.map((claim) => (
               <li key={claim.id}>
-                <div className="rounded-xl bg-white p-4 shadow-sm">
+                <div className="rounded-xl bg-white p-4 shadow-sm border border-[#E8E6E3]">
                   <p className="text-sm font-semibold text-[#111111]">
                     {claim.claimant?.full_name ?? 'Unknown'}
                     {claim.claimant?.credential ? ` (${claim.claimant.credential})` : ''}
@@ -1240,7 +1274,7 @@ function ManageTab() {
           {dupSuccess && <p className="text-sm text-[#16A34A]">{dupSuccess}</p>}
 
           {dupConfirm ? (
-            <div className="rounded-xl bg-white p-4 shadow-sm">
+            <div className="rounded-xl bg-white p-4 shadow-sm border border-[#E8E6E3]">
               <p className="text-sm text-[#111111]">
                 Copy {dupConfirm.count} shift{dupConfirm.count === 1 ? '' : 's'} to the week of{' '}
                 {formatWeekRangeLabel(dupConfirm.destStart)}?
@@ -1298,16 +1332,285 @@ function ManageTab() {
   )
 }
 
+function StaffTab() {
+  const [nurses, setNurses] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [weekStats, setWeekStats] = useState({})
+  const [expandedId, setExpandedId] = useState(null)
+  const [editForm, setEditForm] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState(null)
+  const [savedId, setSavedId] = useState(null)
+  const [savedFading, setSavedFading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchStaff() {
+      setLoading(true)
+      setError(null)
+
+      const { data: nurseData, error: nurseError } = await supabase
+        .from('profiles')
+        .select('id, full_name, credential, home_unit, email')
+        .eq('role', 'nurse')
+        .order('full_name', { ascending: true })
+
+      if (cancelled) return
+
+      if (nurseError) {
+        setError(nurseError.message)
+        setNurses([])
+        setLoading(false)
+        return
+      }
+
+      const weekStart = getWeekStart(new Date())
+      const { start, end } = getWeekRange(weekStart)
+
+      const { data: shiftData, error: shiftError } = await supabase
+        .from('shifts')
+        .select('nurse_id, starts_at, ends_at')
+        .not('nurse_id', 'is', null)
+        .gte('starts_at', start.toISOString())
+        .lt('starts_at', end.toISOString())
+
+      if (cancelled) return
+
+      if (shiftError) {
+        setError(shiftError.message)
+        setNurses([])
+        setLoading(false)
+        return
+      }
+
+      const stats = {}
+      for (const shift of shiftData ?? []) {
+        const hours = (new Date(shift.ends_at) - new Date(shift.starts_at)) / 3600000
+        if (!stats[shift.nurse_id]) stats[shift.nurse_id] = { count: 0, hours: 0 }
+        stats[shift.nurse_id].count += 1
+        stats[shift.nurse_id].hours += hours
+      }
+
+      setNurses(nurseData ?? [])
+      setWeekStats(stats)
+      setLoading(false)
+    }
+
+    fetchStaff()
+    return () => { cancelled = true }
+  }, [])
+
+  function handleFieldChange(field, value) {
+    setEditForm((current) => ({ ...current, [field]: value }))
+  }
+
+  function handleToggleEdit(nurse) {
+    setSaveError(null)
+    setExpandedId((current) => {
+      if (current === nurse.id) return null
+      setEditForm({
+        email: nurse.email ?? '',
+        home_unit: nurse.home_unit ?? '',
+        credential: nurse.credential ?? '',
+      })
+      return nurse.id
+    })
+  }
+
+  function handleCancelEdit() {
+    setExpandedId(null)
+    setEditForm(null)
+    setSaveError(null)
+  }
+
+  async function handleSave(nurse) {
+    setSaving(true)
+    setSaveError(null)
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({
+        email: editForm.email || null,
+        home_unit: editForm.home_unit || null,
+        credential: editForm.credential || null,
+      })
+      .eq('id', nurse.id)
+
+    setSaving(false)
+
+    if (updateError) {
+      setSaveError(updateError.message)
+      return
+    }
+
+    setNurses((current) => current.map((n) => (n.id === nurse.id ? { ...n, ...editForm } : n)))
+    setSavedId(nurse.id)
+    setSavedFading(false)
+    setTimeout(() => setSavedFading(true), 1500)
+    setTimeout(() => {
+      setSavedId((current) => (current === nurse.id ? null : current))
+      setSavedFading(false)
+    }, 2000)
+  }
+
+  if (loading) return <p className="text-sm text-[#6B7280]">Loading staff…</p>
+  if (error) return <p className="text-sm text-red-700">Could not load staff: {error}</p>
+
+  return (
+    <div>
+      <h2 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-[#111111]">
+        <Users size={14} strokeWidth={2} />
+        Staff
+      </h2>
+
+      {nurses.length === 0 ? (
+        <p className="text-sm text-[#6B7280]">No nurses found.</p>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {nurses.map((nurse) => {
+            const stats = weekStats[nurse.id] ?? { count: 0, hours: 0 }
+            const roundedHours = Math.round(stats.hours * 10) / 10
+            const isExpanded = expandedId === nurse.id
+
+            return (
+              <li key={nurse.id}>
+                <div className="relative rounded-xl bg-white p-4 shadow-sm border border-[#E8E6E3]">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleEdit(nurse)}
+                    aria-label="Edit nurse"
+                    className="absolute top-4 right-4 text-[#9CA3AF]"
+                  >
+                    <Pencil size={15} strokeWidth={2} />
+                  </button>
+
+                  <div className="flex items-center gap-3 pr-6">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#F8F7F5] text-xs font-semibold text-[#6B7280]">
+                      {getInitials(nurse.full_name)}
+                    </div>
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                      <p className="truncate text-sm font-semibold text-[#111111]">
+                        {nurse.full_name}
+                      </p>
+                      {nurse.credential && (
+                        <>
+                          <span className="h-3 border-l border-[#E8E6E3]" />
+                          <p className="text-xs text-[#9CA3AF]">{nurse.credential}</p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <p className="mt-2 text-xs text-[#6B7280]">
+                    {stats.count} shift{stats.count === 1 ? '' : 's'} · {roundedHours} hrs
+                  </p>
+                </div>
+
+                {isExpanded && editForm && (
+                  <div className="mt-2 flex flex-col gap-4 rounded-xl bg-white p-4 shadow-sm border border-[#E8E6E3]">
+                    <div className="flex flex-col gap-1.5">
+                      <label className={labelClassName}>Email</label>
+                      <input
+                        type="email"
+                        value={editForm.email}
+                        onChange={(e) => handleFieldChange('email', e.target.value)}
+                        className="w-full rounded-xl border border-[#E8E6E3] p-2 text-sm"
+                      />
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className={labelClassName}>Home unit</label>
+                      <select
+                        value={editForm.home_unit}
+                        onChange={(e) => handleFieldChange('home_unit', e.target.value)}
+                        className="w-full rounded-xl border border-[#E8E6E3] p-2 text-sm"
+                      >
+                        <option value="">Select unit</option>
+                        <option value="Unit 1">Unit 1</option>
+                        <option value="Unit 2">Unit 2</option>
+                        <option value="Unit 3">Unit 3</option>
+                      </select>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className={labelClassName}>Credential</label>
+                      <input
+                        type="text"
+                        value={editForm.credential}
+                        onChange={(e) => handleFieldChange('credential', e.target.value)}
+                        className="w-full rounded-xl border border-[#E8E6E3] p-2 text-sm"
+                      />
+                    </div>
+
+                    {saveError && <p className="text-sm text-red-700">Could not save: {saveError}</p>}
+
+                    {savedId === nurse.id && (
+                      <span
+                        className={cn(
+                          'text-xs text-[#16A34A] transition-opacity duration-500',
+                          savedFading ? 'opacity-0' : 'opacity-100',
+                        )}
+                      >
+                        Saved
+                      </span>
+                    )}
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSave(nurse)}
+                        disabled={saving}
+                        className="rounded-full bg-[#111111] px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                      >
+                        {saving ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        disabled={saving}
+                        className="rounded-full border border-[#E8E6E3] px-4 py-2 text-sm font-medium text-[#111111] disabled:opacity-60"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export default function Schedule({ user, role, initialTab = 'my' }) {
-  const [activeTab, setActiveTab] = useState(initialTab)
   const isCoordinator = role === 'coordinator'
 
-  const tabs = [
-    { id: 'my', label: 'My Shifts' },
-    ...(!isCoordinator ? [{ id: 'open', label: 'Open Shifts' }] : []),
-    { id: 'team', label: 'Team Schedule' },
-    ...(isCoordinator ? [{ id: 'manage', label: 'Manage' }] : []),
-  ]
+  const tabs = isCoordinator
+    ? [
+        { id: 'team', label: 'Team Schedule' },
+        { id: 'manage', label: 'Manage' },
+        { id: 'staff', label: 'Staff' },
+      ]
+    : [
+        { id: 'my', label: 'My Shifts' },
+        { id: 'open', label: 'Open Shifts' },
+        { id: 'team', label: 'Team Schedule' },
+      ]
+
+  const [activeTab, setActiveTab] = useState(
+    tabs.some((tab) => tab.id === initialTab) ? initialTab : tabs[0].id,
+  )
+
+  // Only re-check when role changes (e.g. resolves after Schedule mounts), not on every tab switch.
+  useEffect(() => {
+    if (!tabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(tabs[0].id)
+    }
+  }, [isCoordinator])
 
   return (
     <main className="mx-auto w-full max-w-md px-5 pt-12 pb-12">
@@ -1334,10 +1637,11 @@ export default function Schedule({ user, role, initialTab = 'my' }) {
       </div>
 
       <div role="tabpanel">
-        {activeTab === 'my' && <MyShiftsTab user={user} />}
+        {activeTab === 'my' && !isCoordinator && <MyShiftsTab user={user} />}
         {activeTab === 'open' && !isCoordinator && <OpenShiftsTab user={user} />}
         {activeTab === 'team' && <TeamScheduleTab />}
         {activeTab === 'manage' && isCoordinator && <ManageTab />}
+        {activeTab === 'staff' && isCoordinator && <StaffTab />}
       </div>
     </main>
   )
