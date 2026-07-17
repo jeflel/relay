@@ -6,15 +6,7 @@
 
 html,
 body,
-#root,
-h1,
-h2,
-h3,
-p,
-ul,
-ol,
-figure,
-blockquote {
+#root {
   margin: 0;
 }
 
