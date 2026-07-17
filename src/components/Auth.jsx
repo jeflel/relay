@@ -64,9 +64,9 @@ export default function Auth() {
   return (
     <main className="mx-auto w-full max-w-md px-5 pt-16 pb-8">
       <p className="mb-8 text-center text-2xl font-bold text-[#4F46E5]">Relay</p>
-      <h1 className="mb-2 text-2xl font-semibold">Sign in</h1>
-      <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
-        <Label htmlFor="email">Email</Label>
+      <h1 className="mb-8 text-2xl font-semibold">Sign in</h1>
+      <form className="flex flex-col" onSubmit={handleSubmit}>
+        <Label htmlFor="email" className="mb-2">Email</Label>
         <Input
           id="email"
           type="email"
@@ -75,12 +75,12 @@ export default function Auth() {
           placeholder="you@example.com"
           required
           autoComplete="email"
-          className="h-auto border-gray-300 bg-white px-3.5 py-3 focus-visible:border-[#111] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#111] focus-visible:ring-0"
+          className={`h-auto border-gray-300 bg-white px-3.5 py-3 focus-visible:border-[#111] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#111] focus-visible:ring-0 ${mode === 'password' ? 'mb-3' : 'mb-6'}`}
         />
 
         {mode === 'password' && (
           <>
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password" className="mb-2">Password</Label>
             <Input
               id="password"
               type="password"
@@ -89,17 +89,17 @@ export default function Auth() {
               placeholder="Your password"
               required
               autoComplete="current-password"
-              className="h-auto border-gray-300 bg-white px-3.5 py-3 focus-visible:border-[#111] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#111] focus-visible:ring-0"
+              className="mb-6 h-auto border-gray-300 bg-white px-3.5 py-3 focus-visible:border-[#111] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[#111] focus-visible:ring-0"
             />
           </>
         )}
 
-        {error && <p className="text-sm text-red-700">{error}</p>}
+        {error && <p className="mb-3 text-sm text-red-700">{error}</p>}
 
         <Button
           type="submit"
           disabled={loading}
-          className="mt-1 h-auto w-full bg-[#111] px-4 py-3 text-white hover:bg-[#111] disabled:opacity-60"
+          className="h-auto w-full bg-[#111] px-4 py-3 text-white hover:bg-[#111] disabled:opacity-60"
         >
           {loading
             ? mode === 'password'
@@ -115,7 +115,7 @@ export default function Auth() {
         type="button"
         variant="outline"
         onClick={toggleMode}
-        className="mt-3 h-auto w-full border-gray-300 bg-white px-5 py-3 text-base font-semibold text-[#111] shadow-none hover:bg-white hover:text-[#111]"
+        className="mt-4 h-auto w-full border-gray-300 bg-white px-5 py-3 text-base font-semibold text-[#111] shadow-none hover:bg-white hover:text-[#111]"
       >
         {mode === 'password' ? 'Sign in with magic link' : 'Sign in with password'}
       </Button>
