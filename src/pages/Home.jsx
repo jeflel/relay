@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Calendar, Users, AlertTriangle, CheckCircle2, X } from 'lucide-react'
+import { Calendar, Users, AlertTriangle, CheckCircle2, Bell, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import ShiftDetail from './ShiftDetail'
 import { ShiftPeriodPill } from '@/components/ui/pill'
@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
   formatLocalDateKey,
-  formatShiftDate,
   formatShiftTimeRange,
   getShiftPeriod,
   isSameLocalDay,
@@ -17,6 +16,11 @@ import {
 
 const weekdayFormatter = new Intl.DateTimeFormat(undefined, { weekday: 'short' })
 const monthFormatter = new Intl.DateTimeFormat(undefined, { month: 'short' })
+const todayLabelFormatter = new Intl.DateTimeFormat(undefined, {
+  weekday: 'long',
+  month: 'long',
+  day: 'numeric',
+})
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -33,6 +37,28 @@ function getSummaryRange() {
   return { start, end }
 }
 
+function getFirstName(fullName) {
+  if (!fullName) return null
+  const firstName = fullName.trim().split(' ')[0]
+  return firstName.endsWith('.') ? firstName : `${firstName}.`
+}
+
+function formatRelativeTime(isoString) {
+  const diffMinutes = Math.floor((Date.now() - new Date(isoString).getTime()) / 60000)
+
+  if (diffMinutes < 1) return 'Just now'
+  if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} ago`
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`
+
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`
+
+  const diffWeeks = Math.floor(diffDays / 7)
+  return `${diffWeeks} week${diffWeeks === 1 ? '' : 's'} ago`
+}
+
 export default function Home({ user, role, onGoToManage }) {
   const [fullName, setFullName] = useState(null)
   const [credential, setCredential] = useState(null)
@@ -41,6 +67,7 @@ export default function Home({ user, role, onGoToManage }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selectedShift, setSelectedShift] = useState(null)
+  const [bellOpen, setBellOpen] = useState(false)
 
   const isCoordinator = role === 'coordinator'
 
@@ -71,9 +98,8 @@ export default function Home({ user, role, onGoToManage }) {
         ? Promise.resolve({ data: [], error: null })
         : supabase
             .from('notifications')
-            .select('id, type, message, shift_id, created_at')
+            .select('id, type, message, shift_id, created_at, read')
             .eq('user_id', user.id)
-            .eq('read', false)
             .order('created_at', { ascending: false })
 
       const [profileResult, shiftsResult, notificationsResult] = await Promise.all([
@@ -119,8 +145,23 @@ export default function Home({ user, role, onGoToManage }) {
   }, [user.id, isCoordinator])
 
   async function handleDismissNotification(id) {
-    setNotifications((current) => current.filter((n) => n.id !== id))
+    setNotifications((current) => current.map((n) => (n.id === id ? { ...n, read: true } : n)))
     await supabase.from('notifications').update({ read: true }).eq('id', id)
+  }
+
+  async function handleBellClick() {
+    if (bellOpen) {
+      setBellOpen(false)
+      return
+    }
+
+    setBellOpen(true)
+
+    const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id)
+    if (unreadIds.length === 0) return
+
+    setNotifications((current) => current.map((n) => ({ ...n, read: true })))
+    await supabase.from('notifications').update({ read: true }).in('id', unreadIds)
   }
 
   if (selectedShift) {
@@ -134,20 +175,103 @@ export default function Home({ user, role, onGoToManage }) {
   }
 
   const today = new Date()
-  const todayLabel = formatShiftDate(today.toISOString())
+  const todayLabel = todayLabelFormatter.format(today)
+  const firstName = getFirstName(fullName)
+  const hasUnread = notifications.some((n) => !n.read)
 
   return (
     <main className="mx-auto w-full max-w-md px-5 pt-12 pb-12">
-      {loading ? (
-        <div className="h-9 w-48 animate-pulse rounded-md bg-line/60" />
-      ) : (
-        <h1 className="text-3xl tracking-tight">
-          <span className="font-medium text-[#6B7280]">{getGreeting()}</span>
-          {fullName && <span className="font-bold text-ink">, {fullName}</span>}
-        </h1>
-      )}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          {loading ? (
+            <div className="h-9 w-48 animate-pulse rounded-md bg-line/60" />
+          ) : (
+            <h1 className="text-3xl tracking-tight">
+              <span className="font-medium text-[#6B7280]">{getGreeting()}</span>
+              {firstName && <span className="font-bold text-ink">, {firstName}</span>}
+            </h1>
+          )}
 
-      <p className="mt-2 text-base font-normal text-[#9CA3AF]">{todayLabel}</p>
+          <p className="mt-2 text-base font-normal text-[#4B5563]">{todayLabel}</p>
+        </div>
+
+        {!isCoordinator && (
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={handleBellClick}
+              aria-label="Notifications"
+              className="relative rounded-full bg-[#F3F4F6] p-2"
+            >
+              <Bell className="text-ink" size={20} />
+              {hasUnread && (
+                <span className="absolute top-0 right-0 h-2 w-2 rounded-full bg-red-500" />
+              )}
+            </button>
+
+            {bellOpen && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Close notifications"
+                  onClick={() => setBellOpen(false)}
+                  className="fixed inset-0 z-10 cursor-default"
+                />
+                <div className="absolute top-full right-0 z-20 mt-2 w-80 max-w-[80vw] rounded-xl border border-[#E8E6E3] bg-white shadow-sm">
+                  <div className="flex items-center justify-between border-b border-[#E8E6E3] p-4">
+                    <p className="text-sm font-semibold text-ink">Notifications</p>
+                    <button
+                      type="button"
+                      onClick={() => setBellOpen(false)}
+                      aria-label="Close notifications"
+                      className="text-[#6B7280]"
+                    >
+                      <X size={16} strokeWidth={2} />
+                    </button>
+                  </div>
+
+                  {notifications.length === 0 ? (
+                    <p className="p-4 text-sm text-[#6B7280]">No notifications yet</p>
+                  ) : (
+                    <ul className="flex max-h-80 flex-col overflow-y-auto">
+                      {notifications.map((notification) => {
+                        const isApproved = notification.type === 'claim_approved'
+
+                        return (
+                          <li
+                            key={notification.id}
+                            className="flex items-start gap-2 border-b border-[#E8E6E3] p-4 last:border-b-0"
+                          >
+                            {isApproved ? (
+                              <CheckCircle2
+                                className="mt-0.5 shrink-0 text-[#16A34A]"
+                                size={16}
+                                strokeWidth={2}
+                              />
+                            ) : (
+                              <AlertTriangle
+                                className="mt-0.5 shrink-0 text-[#D97706]"
+                                size={16}
+                                strokeWidth={2}
+                              />
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-sm text-ink">{notification.message}</p>
+                              <p className="mt-0.5 text-xs text-[#9CA3AF]">
+                                {formatRelativeTime(notification.created_at)}
+                              </p>
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {!loading && error && (
         <p className="mt-6 text-sm text-red-700">Could not load home data: {error}</p>
@@ -221,10 +345,12 @@ function NurseSummary({
   return (
     <>
       <div className="mb-9">
-        <div className="flex items-center gap-2">
-          {isWorkingToday && (
-            <CheckCircle2 className="shrink-0 text-[#16A34A]" size={18} strokeWidth={2.5} />
+        <div
+          className={cn(
+            'border-l-2 pl-3',
+            isWorkingToday ? 'border-[#059669]' : 'border-[#9CA3AF]',
           )}
+        >
           <p
             className={cn(
               'text-[17px]',
@@ -236,7 +362,7 @@ function NurseSummary({
         </div>
 
         {isWorkingToday && (
-          <div className="mt-2 flex flex-col gap-3 pl-[26px]">
+          <div className="mt-2 flex flex-col gap-3 pl-3">
             {todayShifts.map((shift) => {
               const [startTime, endTime] = formatShiftTimeRange(
                 shift.starts_at,
@@ -264,15 +390,17 @@ function NurseSummary({
         )}
       </div>
 
-      {notifications.length > 0 && (
+      {notifications.some((n) => !n.read) && (
         <div className="mb-9 flex flex-col gap-2">
-          {notifications.map((notification) => (
-            <NotificationBanner
-              key={notification.id}
-              notification={notification}
-              onDismiss={onDismissNotification}
-            />
-          ))}
+          {notifications
+            .filter((n) => !n.read)
+            .map((notification) => (
+              <NotificationBanner
+                key={notification.id}
+                notification={notification}
+                onDismiss={onDismissNotification}
+              />
+            ))}
         </div>
       )}
 
