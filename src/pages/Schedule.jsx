@@ -634,6 +634,12 @@ function ManageTab() {
   const [dupSuccess, setDupSuccess] = useState(null)
   const [dupConfirm, setDupConfirm] = useState(null)
 
+  const [staff, setStaff] = useState([])
+  const [staffLoading, setStaffLoading] = useState(true)
+  const [staffError, setStaffError] = useState(null)
+  const [savedStaffId, setSavedStaffId] = useState(null)
+  const [savedStaffVisible, setSavedStaffVisible] = useState(false)
+
   useEffect(() => {
     async function fetchNurses() {
       const { data, error: fetchError } = await supabase
@@ -1051,6 +1057,53 @@ function ManageTab() {
 
   function handleCancelCopy() {
     setDupConfirm(null)
+  }
+
+  useEffect(() => {
+    async function fetchStaff() {
+      setStaffLoading(true)
+      setStaffError(null)
+
+      const { data, error: fetchError } = await supabase
+        .from('profiles')
+        .select('id, full_name, credential, home_unit')
+        .eq('role', 'nurse')
+        .order('full_name', { ascending: true })
+
+      if (fetchError) {
+        setStaffError(fetchError.message)
+        setStaff([])
+      } else {
+        setStaff(data ?? [])
+      }
+
+      setStaffLoading(false)
+    }
+
+    fetchStaff()
+  }, [])
+
+  async function handleHomeUnitChange(nurseId, homeUnit) {
+    setStaff((current) =>
+      current.map((n) => (n.id === nurseId ? { ...n, home_unit: homeUnit } : n)),
+    )
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ home_unit: homeUnit })
+      .eq('id', nurseId)
+
+    if (updateError) {
+      setStaffError(updateError.message)
+      return
+    }
+
+    setSavedStaffId(nurseId)
+    setSavedStaffVisible(true)
+    setTimeout(() => setSavedStaffVisible(false), 1500)
+    setTimeout(() => {
+      setSavedStaffId((current) => (current === nurseId ? null : current))
+    }, 2000)
   }
 
   if (loading) return <p className="text-sm text-[#6B7280]">Loading…</p>
@@ -1533,6 +1586,68 @@ function ManageTab() {
             </Button>
           )}
         </div>
+      </section>
+
+      <section>
+        <h2 className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-[#111111]">
+          <Users size={14} />
+          Staff
+        </h2>
+
+        {staffLoading && <p className="text-sm text-[#6B7280]">Loading staff…</p>}
+        {!staffLoading && staffError && (
+          <p className="text-sm text-red-700">Could not load staff: {staffError}</p>
+        )}
+
+        {!staffLoading && !staffError && (
+          staff.length === 0 ? (
+            <p className="text-sm text-[#6B7280]">No staff found.</p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {staff.map((nurse) => (
+                <li
+                  key={nurse.id}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-white p-4 shadow-sm"
+                >
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <p className="truncate text-sm font-medium text-[#111111]">{nurse.full_name}</p>
+                    {nurse.credential && (
+                      <>
+                        <span className="h-3 border-l border-[#E8E6E3]" />
+                        <p className="text-xs text-[#9CA3AF]">{nurse.credential}</p>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    {savedStaffId === nurse.id && (
+                      <span
+                        className={cn(
+                          'text-xs text-[#16A34A] transition-opacity duration-500',
+                          savedStaffVisible ? 'opacity-100' : 'opacity-0',
+                        )}
+                      >
+                        Saved
+                      </span>
+                    )}
+                    <select
+                      value={nurse.home_unit ?? ''}
+                      onChange={(e) => handleHomeUnitChange(nurse.id, e.target.value)}
+                      className="rounded-xl border border-[#E8E6E3] p-2 text-sm"
+                    >
+                      <option value="" disabled>
+                        Select unit
+                      </option>
+                      <option value="Unit 1">Unit 1</option>
+                      <option value="Unit 2">Unit 2</option>
+                      <option value="Unit 3">Unit 3</option>
+                    </select>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )
+        )}
       </section>
     </div>
   )
