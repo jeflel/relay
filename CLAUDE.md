@@ -23,7 +23,7 @@ nurses, facility pays.
 
 - React + Vite (JavaScript, no TypeScript)
 - Supabase (auth, database, RLS)
-- Vercel (deployment) — live at relay-iota-rose.vercel.app
+- Vercel (deployment) — live at claimo.us
 - Tailwind CSS v4 (no tailwind.config.js — CSS-driven via @theme)
 - shadcn/ui (style: new-york, base color: neutral, CSS variables on)
 - Geist font via Google Fonts CDN (loaded in index.html)

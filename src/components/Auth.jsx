@@ -63,7 +63,7 @@ export default function Auth() {
 
   return (
     <main className="mx-auto w-full max-w-md px-5 pt-16 pb-8">
-      <p className="mb-8 text-center text-2xl font-bold text-[#4F46E5]">Relay</p>
+      <p className="mb-8 text-center text-2xl font-bold text-[#4F46E5]">Claimo</p>
       <h1 className="mb-8 text-2xl font-semibold">Sign in</h1>
       <form className="flex flex-col" onSubmit={handleSubmit}>
         <Label htmlFor="email" className="mb-2">Email</Label>

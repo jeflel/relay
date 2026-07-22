@@ -12,7 +12,7 @@ export default function More() {
 
   return (
     <main className="mx-auto w-full max-w-md px-5 pt-12 pb-12">
-      <p className="text-center text-2xl font-bold text-[#4F46E5]">Relay</p>
+      <p className="text-center text-2xl font-bold text-[#4F46E5]">Claimo</p>
       <div className="mt-1 flex justify-center">
         <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-[#4F46E5]">Beta</span>
       </div>
